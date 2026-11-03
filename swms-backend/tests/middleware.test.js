@@ -1,0 +1,145 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const { validateBody, validateId, requireRoleFields } = require("../middleware/validate");
+const {
+  authorizeAdmin,
+  authorizeCollectionManager,
+  authorizeCollectionDeleter,
+  authorizeHouseholdManager,
+  authorizeHouseholdReader,
+  authorizeBinReader,
+  authorizeBinManager,
+  authorizeHousehold,
+} = require("../middleware/authorization");
+const { notFound, errorHandler } = require("../middleware/errorMiddleware");
+const schemas = require("../validation/schemas");
+
+function run(middleware, req) {
+  return new Promise((resolve, reject) => {
+    middleware(req, {}, (error) => (error ? reject(error) : resolve(req)));
+  });
+}
+
+test("body validation rejects unknown fields and invalid emails", async () => {
+  await assert.rejects(
+    run(validateBody({ email: { type: "email", required: true } }), {
+      body: { email: "not-an-email", isAdmin: true },
+    }),
+    (error) => error.statusCode === 400 && error.details.length === 2
+  );
+});
+
+test("body validation normalizes ISO dates to a UTC timestamp", async () => {
+  const req = { body: { scheduledAt: "2026-11-01T09:00:00Z" } };
+  await run(validateBody({ scheduledAt: { type: "datetime", required: true } }), req);
+  assert.equal(req.body.scheduledAt, "2026-11-01T09:00:00.000Z");
+});
+
+test("body validation trims ordinary strings but preserves passwords", async () => {
+  const req = { body: { name: "  Green City  ", password: "  secret  " } };
+  await run(validateBody({
+    name: { type: "string", required: true },
+    password: { type: "password", required: true },
+  }), req);
+  assert.equal(req.body.name, "Green City");
+  assert.equal(req.body.password, "  secret  ");
+});
+
+test("role-dependent validation rejects missing hierarchy assignments", async () => {
+  await assert.rejects(
+    run(requireRoleFields({ ADMIN: ["representativeId"] }), {
+      user: { role: "ADMIN" },
+      body: {},
+    }),
+    (error) => error.statusCode === 400 && error.details[0].includes("representativeId")
+  );
+});
+
+test("path IDs must be positive integers", async () => {
+  const req = { params: { id: "12" } };
+  await run(validateId, req);
+  assert.equal(req.params.id, 12);
+  await assert.rejects(run(validateId, { params: { id: "1 OR 1=1" } }), (error) => error.statusCode === 400);
+});
+
+test("role guards distinguish administrators from household accounts", async () => {
+  await run(authorizeAdmin, { user: { role: "ADMIN" } });
+  await assert.rejects(
+    run(authorizeAdmin, { user: { role: "HOUSEHOLD" } }),
+    (error) => error.statusCode === 403
+  );
+  await run(authorizeHousehold, { user: { role: "HOUSEHOLD" } });
+});
+
+test("company representatives can use household and collection management routes", async () => {
+  const req = { user: { role: "COMPANY_REPRESENTATIVE" } };
+  await run(authorizeHouseholdManager, req);
+  await run(authorizeCollectionManager, req);
+  await run(authorizeCollectionDeleter, req);
+  await assert.rejects(
+    run(authorizeCollectionDeleter, { user: { role: "COLLECTOR" } }),
+    (error) => error.statusCode === 403
+  );
+  await assert.rejects(
+    run(authorizeCollectionManager, { user: { role: "HOUSEHOLD" } }),
+    (error) => error.statusCode === 403
+  );
+});
+
+test("household readers include collectors but exclude household accounts", async () => {
+  await run(authorizeHouseholdReader, { user: { role: "ADMIN" } });
+  await run(authorizeHouseholdReader, { user: { role: "COMPANY_REPRESENTATIVE" } });
+  await run(authorizeHouseholdReader, { user: { role: "COLLECTOR" } });
+  await assert.rejects(
+    run(authorizeHouseholdReader, { user: { role: "HOUSEHOLD" } }),
+    (error) => error.statusCode === 403
+  );
+});
+
+test("bin role guards preserve collector, representative, admin, and household boundaries", async () => {
+  await run(authorizeBinReader, { user: { role: "ADMIN" } });
+  await run(authorizeBinReader, { user: { role: "COMPANY_REPRESENTATIVE" } });
+  await run(authorizeBinReader, { user: { role: "COLLECTOR" } });
+  await assert.rejects(
+    run(authorizeBinReader, { user: { role: "HOUSEHOLD" } }),
+    (error) => error.statusCode === 403
+  );
+  await run(authorizeBinManager, { user: { role: "ADMIN" } });
+  await run(authorizeBinManager, { user: { role: "COLLECTOR" } });
+  await assert.rejects(
+    run(authorizeBinManager, { user: { role: "COMPANY_REPRESENTATIVE" } }),
+    (error) => error.statusCode === 403
+  );
+  await assert.rejects(
+    run(authorizeBinManager, { user: { role: "HOUSEHOLD" } }),
+    (error) => error.statusCode === 403
+  );
+});
+
+test("bin fill-level validation accepts 0-100 and rejects out-of-range values", async () => {
+  const req = { body: { fillLevel: 0 } };
+  await run(validateBody(schemas.binProgress), req);
+  assert.equal(req.body.fillLevel, 0);
+  await assert.rejects(
+    run(validateBody(schemas.binProgress), { body: { fillLevel: 101 } }),
+    (error) => error.statusCode === 400
+  );
+  await assert.rejects(
+    run(validateBody(schemas.binProgress), { body: { fillLevel: -1 } }),
+    (error) => error.statusCode === 400
+  );
+});
+
+test("missing routes return a structured 404 error", () => {
+  let error;
+  notFound({}, {}, (nextError) => { error = nextError; });
+  const response = {
+    statusCode: null,
+    body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.body = body; },
+  };
+  errorHandler(error, {}, response, () => {});
+  assert.equal(response.statusCode, 404);
+  assert.equal(response.body.error.message, "The requested endpoint was not found.");
+});
