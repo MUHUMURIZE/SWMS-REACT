@@ -1,0 +1,10 @@
+# Use this workspace to collaborate
+workspace:
+  id: 3bcef5ce-0102-4d2c-8144-56abe555132e
+
+localResources:
+  collections:
+    - ../swms-backend/postman/Smart Waste Management System
+  environments:
+    - ../swms-backend/postman/SWMS.postman_environment.json
+    - ../swms-backend/postman/SWMS Local.environment.yaml
