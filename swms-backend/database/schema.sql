@@ -44,9 +44,18 @@ $$;
 CREATE TABLE IF NOT EXISTS companies (
   id SERIAL PRIMARY KEY,
   name VARCHAR(160) NOT NULL UNIQUE,
+  district VARCHAR(160),
+  sector VARCHAR(160),
+  cell VARCHAR(160),
+  village VARCHAR(160),
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE companies
+  ADD COLUMN IF NOT EXISTS district VARCHAR(160),
+  ADD COLUMN IF NOT EXISTS sector VARCHAR(160),
+  ADD COLUMN IF NOT EXISTS cell VARCHAR(160),
+  ADD COLUMN IF NOT EXISTS village VARCHAR(160);
 
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
@@ -65,8 +74,17 @@ CREATE INDEX IF NOT EXISTS idx_users_role ON users (role);
 CREATE TABLE IF NOT EXISTS representatives (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE RESTRICT
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+  district VARCHAR(160),
+  sector VARCHAR(160),
+  cell VARCHAR(160),
+  village VARCHAR(160)
 );
+ALTER TABLE representatives
+  ADD COLUMN IF NOT EXISTS district VARCHAR(160),
+  ADD COLUMN IF NOT EXISTS sector VARCHAR(160),
+  ADD COLUMN IF NOT EXISTS cell VARCHAR(160),
+  ADD COLUMN IF NOT EXISTS village VARCHAR(160);
 
 DROP INDEX IF EXISTS idx_representatives_company;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_representatives_company_unique ON representatives (company_id);
@@ -74,8 +92,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_representatives_company_unique ON represen
 CREATE TABLE IF NOT EXISTS collectors (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-  representative_id INTEGER NOT NULL REFERENCES representatives(id) ON DELETE CASCADE
+  representative_id INTEGER NOT NULL REFERENCES representatives(id) ON DELETE CASCADE,
+  district VARCHAR(160),
+  sector VARCHAR(160),
+  cell VARCHAR(160),
+  village VARCHAR(160)
 );
+ALTER TABLE collectors
+  ADD COLUMN IF NOT EXISTS district VARCHAR(160),
+  ADD COLUMN IF NOT EXISTS sector VARCHAR(160),
+  ADD COLUMN IF NOT EXISTS cell VARCHAR(160),
+  ADD COLUMN IF NOT EXISTS village VARCHAR(160);
 
 CREATE INDEX IF NOT EXISTS idx_collectors_representative ON collectors (representative_id);
 
@@ -84,8 +111,17 @@ CREATE TABLE IF NOT EXISTS households (
   user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
   collector_id INTEGER NOT NULL REFERENCES collectors(id) ON DELETE CASCADE,
   address VARCHAR(500) NOT NULL,
-  national_id VARCHAR(64)
+  national_id VARCHAR(64),
+  district VARCHAR(160),
+  sector VARCHAR(160),
+  cell VARCHAR(160),
+  village VARCHAR(160)
 );
+ALTER TABLE households
+  ADD COLUMN IF NOT EXISTS district VARCHAR(160),
+  ADD COLUMN IF NOT EXISTS sector VARCHAR(160),
+  ADD COLUMN IF NOT EXISTS cell VARCHAR(160),
+  ADD COLUMN IF NOT EXISTS village VARCHAR(160);
 
 CREATE INDEX IF NOT EXISTS idx_households_collector ON households (collector_id);
 

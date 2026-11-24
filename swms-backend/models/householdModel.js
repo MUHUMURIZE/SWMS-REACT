@@ -2,6 +2,7 @@ const { pool } = require("../config/db");
 
 const selection = `SELECT h.id, h.user_id AS "userId", h.collector_id AS "collectorId",
   h.address, h.national_id AS "nationalId", u.full_name AS "fullName", u.email, u.phone,
+  h.district, h.sector, h.cell, h.village,
   cuser.full_name AS "collectorName", r.company_id AS "companyId",
   u.created_at AS "createdAt", u.updated_at AS "updatedAt"
   FROM households h
@@ -35,15 +36,16 @@ exports.findByUserId = async (userId, executor = pool) => {
   return result.rows[0] || null;
 };
 
-exports.create = async (executor, userId, collectorId, address, nationalId) => {
+exports.create = async (executor, userId, collectorId, address, nationalId, { district, sector, cell, village } = {}) => {
   const result = await executor.query(
-    "INSERT INTO households (user_id, collector_id, address, national_id) VALUES ($1, $2, $3, $4) RETURNING id",
-    [userId, collectorId, address, nationalId || null]
+    `INSERT INTO households (user_id, collector_id, address, national_id, district, sector, cell, village)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+    [userId, collectorId, address, nationalId || null, district ?? null, sector ?? null, cell ?? null, village ?? null]
   );
   return result.rows[0].id;
 };
 
-exports.update = async (id, { fullName, phone, address, nationalId }) => {
+exports.update = async (id, { fullName, phone, address, nationalId, district, sector, cell, village }) => {
   const lookup = await pool.query("SELECT user_id FROM households WHERE id = $1", [id]);
   if (!lookup.rows[0]) return null;
   const connection = await pool.connect();
@@ -56,8 +58,10 @@ exports.update = async (id, { fullName, phone, address, nationalId }) => {
     );
     await connection.query(
       `UPDATE households SET address = COALESCE($1, address),
-       national_id = COALESCE($2, national_id) WHERE id = $3`,
-      [address === undefined ? null : address, nationalId === undefined ? null : nationalId, id]
+       national_id = COALESCE($2, national_id),
+       district = COALESCE($3, district), sector = COALESCE($4, sector),
+       cell = COALESCE($5, cell), village = COALESCE($6, village) WHERE id = $7`,
+      [address ?? null, nationalId ?? null, district ?? null, sector ?? null, cell ?? null, village ?? null, id]
     );
     await connection.query("COMMIT");
   } catch (error) {

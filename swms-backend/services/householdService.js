@@ -74,6 +74,10 @@ exports.create = async (user, data) => {
     collectorId,
     address: data.address.trim(),
     nationalId: data.nationalId,
+    district: data.district,
+    sector: data.sector,
+    cell: data.cell,
+    village: data.village,
   });
 };
 

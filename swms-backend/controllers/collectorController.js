@@ -28,7 +28,7 @@ exports.get = async (req, res) => {
 };
 
 exports.create = async (req, res) => {
-  const { fullName, email, password, phone } = req.body;
+  const { fullName, email, password, phone, district, sector, cell, village } = req.body;
   let representativeId = req.body.representativeId;
   if (req.user.role === "COMPANY_REPRESENTATIVE") {
     if (req.body.representativeId !== undefined) {
@@ -48,6 +48,10 @@ exports.create = async (req, res) => {
     role: "COLLECTOR",
     phone,
     representativeId,
+    district,
+    sector,
+    cell,
+    village,
   });
   res.status(201).json({ data: await collectorModel.findById(created.resourceId) });
 };
@@ -70,7 +74,14 @@ exports.update = async (req, res) => {
   }
   const updated = await collectorModel.update(req.params.id, req.user.role === "ADMIN"
     ? req.body
-    : { fullName: req.body.fullName, phone: req.body.phone });
+    : {
+      fullName: req.body.fullName,
+      phone: req.body.phone,
+      district: req.body.district,
+      sector: req.body.sector,
+      cell: req.body.cell,
+      village: req.body.village,
+    });
   res.json({ data: updated });
 };
 

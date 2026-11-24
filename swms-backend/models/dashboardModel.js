@@ -30,7 +30,11 @@ exports.company = async (companyId) => {
         WHERE r.company_id = $1 AND cl.status IN ('collected', 'completed')) AS "completedCollections",
       (SELECT COUNT(*)::int FROM collections cl JOIN collectors c ON c.id = cl.collector_id
         JOIN representatives r ON r.id = c.representative_id
-        WHERE r.company_id = $1 AND cl.status IN ('pending', 'scheduled')) AS "pendingCollections"`,
+        WHERE r.company_id = $1 AND cl.status IN ('pending', 'scheduled')) AS "pendingCollections",
+      (SELECT district FROM companies WHERE id = $1) AS district,
+      (SELECT sector FROM companies WHERE id = $1) AS sector,
+      (SELECT cell FROM companies WHERE id = $1) AS cell,
+      (SELECT village FROM companies WHERE id = $1) AS village`,
     [companyId]
   );
   const metrics = result.rows[0];
@@ -45,8 +49,20 @@ exports.collector = async (collectorId) => {
     `SELECT
       (SELECT COUNT(*)::int FROM households WHERE collector_id = $1) AS "myHouseholds",
       (SELECT COUNT(*)::int FROM collections WHERE collector_id = $1 AND status IN ('pending', 'scheduled')) AS "pendingCollections",
-      (SELECT COUNT(*)::int FROM collections WHERE collector_id = $1 AND status IN ('collected', 'completed')) AS "completedCollections"`,
+      (SELECT COUNT(*)::int FROM collections WHERE collector_id = $1 AND status IN ('collected', 'completed')) AS "completedCollections",
+      (SELECT district FROM collectors WHERE id = $1) AS district,
+      (SELECT sector FROM collectors WHERE id = $1) AS sector,
+      (SELECT cell FROM collectors WHERE id = $1) AS cell,
+      (SELECT village FROM collectors WHERE id = $1) AS village`,
     [collectorId]
   );
   return result.rows[0];
+};
+
+exports.household = async (householdId) => {
+  const result = await pool.query(
+    "SELECT district, sector, cell, village FROM households WHERE id = $1",
+    [householdId]
+  );
+  return result.rows[0] || null;
 };

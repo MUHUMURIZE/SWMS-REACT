@@ -35,6 +35,12 @@ psql -U postgres -d "SWMS_db" -c "SELECT typname, enumlabel FROM pg_type JOIN pg
 
 Configure `.env` locally using `.env.example` as a template. The required names are `DB_USER`, `DB_HOST`, `DB_NAME`, `DB_PASS`, and `DB_PORT`. Keep real database passwords and JWT signing keys out of source control. `JWT_SECRET` must be a randomly generated value of at least 32 characters.
 
+For an existing PostgreSQL database, back it up and apply the additive, idempotent location migration without rerunning the initial schema:
+
+```powershell
+psql -U postgres -d "SWMS_db" -f database\migrations\003_add_location_fields.sql
+```
+
 Check connectivity, create the initial administrator, and run tests:
 
 ```powershell

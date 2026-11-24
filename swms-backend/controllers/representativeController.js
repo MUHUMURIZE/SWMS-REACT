@@ -15,7 +15,7 @@ exports.get = async (req, res) => {
 };
 
 exports.create = async (req, res) => {
-  const { fullName, email, password, phone, companyId } = req.body;
+  const { fullName, email, password, phone, companyId, district, sector, cell, village } = req.body;
   const created = await createAccount({
     fullName: fullName.trim(),
     email: email.trim().toLowerCase(),
@@ -23,6 +23,10 @@ exports.create = async (req, res) => {
     role: "COMPANY_REPRESENTATIVE",
     phone,
     companyId,
+    district,
+    sector,
+    cell,
+    village,
   });
   res.status(201).json({ data: await representativeModel.findById(created.resourceId) });
 };

@@ -47,9 +47,13 @@ exports.collector = async (req, res) => {
 exports.household = async (req, res) => {
   const id = await profileId("households", req.user.id);
   if (!id) throw new AppError(404, "Household profile not found.", "NOT_FOUND");
-  const bin = await binModel.findByHouseholdId(id);
+  const [bin, location] = await Promise.all([
+    binModel.findByHouseholdId(id),
+    dashboardModel.household(id),
+  ]);
   res.json({
     data: {
+      ...location,
       nextCollection: await collectionModel.getNextForHousehold(id),
       currentCollection: await collectionModel.getCurrentForHousehold(id),
       history: await collectionModel.getHouseholdHistory(id),

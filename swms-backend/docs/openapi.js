@@ -44,6 +44,10 @@ const bodyExamples = {
     password: "StrongPass123!",
     role: "COLLECTOR",
     representativeId: 1,
+    district: "Kayonza",
+    sector: "Gahini",
+    cell: "Kiyenzi",
+    village: "Rugarama",
   },
   "POST /api/auth/login": { email: "admin@example.com", password: "your-password" },
   "PUT /api/auth/profile": { fullName: "Jordan Smith", phone: "+10000000000" },
@@ -51,35 +55,93 @@ const bodyExamples = {
     currentPassword: "current-password",
     newPassword: "new-strong-password",
   },
-  "POST /api/companies": { name: "Green City Waste" },
-  "PUT /api/companies/{id}": { name: "Green City Waste Ltd" },
+  "POST /api/companies": {
+    name: "Green City Waste",
+    district: "Kayonza",
+    sector: "Gahini",
+    cell: "Kiyenzi",
+    village: "Rugarama",
+  },
+  "PUT /api/companies/{id}": {
+    name: "Green City Waste Ltd",
+    district: "Kayonza",
+    sector: "Gahini",
+    cell: "Kiyenzi",
+    village: "Rugarama",
+  },
   "POST /api/representatives": {
     fullName: "Riley Representative",
     email: "riley@example.com",
     password: "StrongPass123!",
     companyId: 1,
     phone: "+10000000000",
+    district: "Kayonza",
+    sector: "Gahini",
+    cell: "Kiyenzi",
+    village: "Rugarama",
   },
-  "PUT /api/representatives/{id}": { fullName: "Riley R.", phone: "+10000000000" },
+  "PUT /api/representatives/{id}": {
+    fullName: "Riley R.",
+    phone: "+10000000000",
+    district: "Kayonza",
+    sector: "Gahini",
+    cell: "Kiyenzi",
+    village: "Rugarama",
+  },
   "POST /api/collectors": {
     fullName: "Jordan Collector",
     email: "jordan@example.com",
     password: "StrongPass123!",
     representativeId: 1,
+    district: "Kayonza",
+    sector: "Gahini",
+    cell: "Kiyenzi",
+    village: "Rugarama",
   },
-  "PUT /api/collectors/{id}": { fullName: "Jordan C." },
+  "PUT /api/collectors/{id}": {
+    fullName: "Jordan C.",
+    district: "Kayonza",
+    sector: "Gahini",
+    cell: "Kiyenzi",
+    village: "Rugarama",
+  },
   "POST /api/households": {
     fullName: "Taylor Household",
     email: "taylor@example.com",
     password: "StrongPass123!",
     collectorId: 1,
     address: "10 Main St",
+    district: "Kayonza",
+    sector: "Gahini",
+    cell: "Kiyenzi",
+    village: "Rugarama",
   },
   "POST /api/bins": { householdId: 1, binCode: "BIN-0001", capacity: 120 },
   "PUT /api/bins/{id}": { capacity: 180 },
   "PUT /api/bins/{id}/progress": { fillLevel: 85 },
-  "PUT /api/households/{id}": { address: "12 Main St", phone: "+10000000000" },
-  "PUT /api/me": { fullName: "Taylor H.", address: "12 Main St" },
+  "PUT /api/households/{id}": {
+    address: "12 Main St",
+    phone: "+10000000000",
+    district: "Kayonza",
+    sector: "Gahini",
+    cell: "Kiyenzi",
+    village: "Rugarama",
+  },
+  "PUT /api/households/me": {
+    address: "12 Main St",
+    district: "Kayonza",
+    sector: "Gahini",
+    cell: "Kiyenzi",
+    village: "Rugarama",
+  },
+  "PUT /api/me": {
+    fullName: "Taylor H.",
+    address: "12 Main St",
+    district: "Kayonza",
+    sector: "Gahini",
+    cell: "Kiyenzi",
+    village: "Rugarama",
+  },
   "POST /api/collections": {
     householdId: 1,
     collectorId: 1,
@@ -249,10 +311,47 @@ function getOperationRoles(routeCode, globalGuards) {
     : "Public endpoint.";
 }
 
+const locationExample = {
+  district: "Kayonza",
+  sector: "Gahini",
+  cell: "Kiyenzi",
+  village: "Rugarama",
+};
+
+const profileExamples = {
+  "/api/companies": {
+    id: 1, name: "Green City Waste", ...locationExample,
+  },
+  "/api/representatives": {
+    id: 1, userId: 2, companyId: 1, companyName: "Green City Waste",
+    fullName: "Riley Representative", email: "riley@example.com",
+    phone: "+10000000000", ...locationExample,
+  },
+  "/api/collectors": {
+    id: 1, userId: 3, representativeId: 1, companyId: 1,
+    fullName: "Jordan Collector", email: "jordan@example.com",
+    phone: "+10000000000", representativeName: "Riley Representative",
+    ...locationExample,
+  },
+  "/api/households": {
+    id: 1, userId: 4, collectorId: 1, address: "10 Main St",
+    nationalId: null, fullName: "Taylor Household", email: "taylor@example.com",
+    phone: "+10000000000", collectorName: "Jordan Collector", companyId: 1,
+    ...locationExample,
+  },
+};
+
 function exampleForSuccess(method, routePath) {
   if (method === "delete") return undefined;
-  if (method === "get" && ["/api/companies", "/api/representatives", "/api/collectors",
-    "/api/households", "/api/bins", "/api/bins/full", "/api/collections",
+  const profileRoute = Object.keys(profileExamples)
+    .find((basePath) => routePath === basePath || routePath === `${basePath}/{id}`);
+  if (profileRoute && method === "get" && routePath === profileRoute) {
+    return { data: [profileExamples[profileRoute]] };
+  }
+  if (profileRoute && (method === "get" || method === "post" || method === "put")) {
+    return { data: profileExamples[profileRoute] };
+  }
+  if (method === "get" && ["/api/bins", "/api/bins/full", "/api/collections",
     "/api/notifications"].includes(routePath)) {
     return { data: [] };
   }
@@ -292,7 +391,23 @@ function exampleForSuccess(method, routePath) {
     };
   }
   if (method === "get" && routePath.startsWith("/api/dashboard/")) {
-    return { data: { message: "Dashboard data for the authenticated role." } };
+    return { data: { ...locationExample, message: "Dashboard data for the authenticated role." } };
+  }
+  if (routePath === "/api/me" || routePath === "/api/households/me") {
+    return {
+      data: {
+        user: { id: 1, fullName: "Taylor Household", email: "taylor@example.com", role: "HOUSEHOLD" },
+        profile: { id: 1, ...locationExample },
+      },
+    };
+  }
+  if (routePath === "/api/auth/profile") {
+    return {
+      data: {
+        user: { id: 1, fullName: "Jordan Collector", email: "jordan@example.com", role: "COLLECTOR" },
+        profile: { id: 1, representativeId: 1, ...locationExample },
+      },
+    };
   }
   if (routePath === "/health") return { status: "ok" };
   if (routePath === "/api/auth/logout") return { data: { message: "Logged out successfully." } };

@@ -51,11 +51,54 @@ test("OpenAPI provides JWT authorization and validation-backed request schemas",
   assert.deepEqual(companySchema.required, ["name"]);
   assert.equal(companySchema.minProperties, 1);
   assert.equal(companySchema.properties.name.maxLength, 160);
+  for (const field of ["district", "sector", "cell", "village"]) {
+    assert.equal(companySchema.properties[field].type, "string");
+    assert.equal(companySchema.properties[field].maxLength, 160);
+  }
 
   const registrationSchema = swaggerSpec.paths["/api/auth/register"].post.requestBody.content["application/json"].schema;
   assert.equal(registrationSchema.allOf[1].oneOf.length, 4);
   assert.ok(swaggerSpec.paths["/api/collections/{id}/status"].put.requestBody);
   assert.ok(swaggerSpec.paths["/api/dashboard/company"].get.description.includes("Company Representative"));
+});
+
+test("location fields appear in create, update, and resource response examples", () => {
+  const fields = ["district", "sector", "cell", "village"];
+  const resourcePaths = [
+    ["/api/companies", "post", "get"],
+    ["/api/representatives", "post", "get"],
+    ["/api/collectors", "post", "get"],
+    ["/api/households", "post", "get"],
+  ];
+
+  for (const [route, createMethod, listMethod] of resourcePaths) {
+    const createExample = swaggerSpec.paths[route][createMethod]
+      .requestBody.content["application/json"].example;
+    for (const field of fields) assert.ok(field in createExample, `${route} example is missing ${field}`);
+
+    const listExample = swaggerSpec.paths[route][listMethod]
+      .responses["200"].content["application/json"].example;
+    for (const field of fields) assert.ok(field in listExample.data[0], `${route} response is missing ${field}`);
+  }
+
+  for (const route of [
+    "/api/companies/{id}",
+    "/api/representatives/{id}",
+    "/api/collectors/{id}",
+    "/api/households/{id}",
+  ]) {
+    const updateExample = swaggerSpec.paths[route].put
+      .requestBody.content["application/json"].example;
+    for (const field of fields) assert.ok(field in updateExample, `${route} example is missing ${field}`);
+  }
+
+  const selfUpdateExample = swaggerSpec.paths["/api/households/me"].put
+    .requestBody.content["application/json"].example;
+  for (const field of fields) assert.ok(field in selfUpdateExample, `/api/households/me is missing ${field}`);
+
+  const profileExample = swaggerSpec.paths["/api/auth/profile"].get
+    .responses["200"].content["application/json"].example;
+  for (const field of fields) assert.ok(field in profileExample.data.profile, `/api/auth/profile is missing ${field}`);
 });
 
 test("OpenAPI documents waste bin routes, fill-level limits, tags, and examples", () => {

@@ -10,7 +10,10 @@ const { createAccount } = require("../services/accountService");
 const AppError = require("../utils/AppError");
 
 exports.register = async (req, res) => {
-  const { fullName, email, password, role, phone, companyId, representativeId, collectorId, address, nationalId } = req.body;
+  const {
+    fullName, email, password, role, phone, companyId, representativeId,
+    collectorId, address, nationalId, district, sector, cell, village,
+  } = req.body;
   const passwordHash = await bcrypt.hash(password, 12);
   const created = await createAccount({
     fullName: fullName.trim(),
@@ -23,6 +26,10 @@ exports.register = async (req, res) => {
     collectorId,
     address,
     nationalId,
+    district,
+    sector,
+    cell,
+    village,
   });
   const user = await userModel.findPublicById(created.userId);
   res.status(201).json({ data: { id: created.resourceId, user } });
