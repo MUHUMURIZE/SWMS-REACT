@@ -48,6 +48,10 @@ exports.revokeToken = async (jti, userId, expiresAt) => {
   );
 };
 
+exports.purgeExpiredRevocations = async (executor = pool) => {
+  await executor.query("DELETE FROM revoked_tokens WHERE expires_at < CURRENT_TIMESTAMP");
+};
+
 exports.getTokenVersion = async (id) => {
   const result = await pool.query("SELECT token_version FROM users WHERE id = $1", [id]);
   return result.rows[0] || null;

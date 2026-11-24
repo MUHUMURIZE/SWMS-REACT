@@ -3,8 +3,11 @@ const { pool } = require("../config/db");
 const selectColumns = `id, name, district, sector, cell, village,
   created_at AS "createdAt", updated_at AS "updatedAt"`;
 
-exports.list = async () => {
-  const result = await pool.query(`SELECT ${selectColumns} FROM companies ORDER BY name`);
+exports.list = async (pagination = { limit: 50, offset: 0 }) => {
+  const result = await pool.query(
+    `SELECT ${selectColumns} FROM companies ORDER BY name LIMIT $1 OFFSET $2`,
+    [pagination.limit, pagination.offset]
+  );
   return result.rows;
 };
 

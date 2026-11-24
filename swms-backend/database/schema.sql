@@ -19,7 +19,8 @@ BEGIN
     'in_progress',
     'collected',
     'completed',
-    'missed'
+    'missed',
+    'cancelled'
   );
 EXCEPTION
   WHEN duplicate_object THEN NULL;
@@ -152,6 +153,21 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications (user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id BIGSERIAL PRIMARY KEY,
+  actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  action VARCHAR(100) NOT NULL,
+  resource_type VARCHAR(100) NOT NULL,
+  resource_id VARCHAR(128),
+  reason TEXT,
+  ip_address INET,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_created ON audit_logs (actor_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_resource ON audit_logs (resource_type, resource_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS revoked_tokens (
   jti UUID PRIMARY KEY,

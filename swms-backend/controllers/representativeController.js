@@ -5,8 +5,9 @@ const userModel = require("../models/userModel");
 const companyModel = require("../models/companyModel");
 const { createAccount } = require("../services/accountService");
 const AppError = require("../utils/AppError");
+const auditModel = require("../models/auditModel");
 
-exports.list = async (_req, res) => res.json({ data: await representativeModel.list() });
+exports.list = async (req, res) => res.json({ data: await representativeModel.list(req.pagination) });
 
 exports.get = async (req, res) => {
   const representative = await representativeModel.findById(req.params.id);
@@ -45,6 +46,13 @@ exports.update = async (req, res) => {
 exports.remove = async (req, res) => {
   const representative = await representativeModel.findById(req.params.id);
   if (!representative) throw new AppError(404, "Company representative not found.", "NOT_FOUND");
+  const dependencies = await pool.query(
+    "SELECT 1 FROM collectors WHERE representative_id = $1 LIMIT 1",
+    [req.params.id]
+  );
+  if (dependencies.rows[0]) {
+    throw new AppError(409, "A representative with collectors cannot be deleted.", "CONFLICT");
+  }
   const connection = await pool.connect();
   try {
     await connection.query("BEGIN");
@@ -70,5 +78,12 @@ exports.remove = async (req, res) => {
   } finally {
     connection.release();
   }
+  await auditModel.record({
+    actorUserId: req.user.id,
+    action: "REPRESENTATIVE_DELETED",
+    resourceType: "REPRESENTATIVE",
+    resourceId: req.params.id,
+    ipAddress: req.ip,
+  });
   res.status(204).end();
 };

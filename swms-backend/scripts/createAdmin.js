@@ -11,6 +11,12 @@ async function createAdmin() {
   if (BOOTSTRAP_ADMIN_PASSWORD.length < 12) {
     throw new Error("BOOTSTRAP_ADMIN_PASSWORD must be at least 12 characters long.");
   }
+  if (!/[a-z]/.test(BOOTSTRAP_ADMIN_PASSWORD)
+    || !/[A-Z]/.test(BOOTSTRAP_ADMIN_PASSWORD)
+    || !/\d/.test(BOOTSTRAP_ADMIN_PASSWORD)
+    || !/[^A-Za-z0-9]/.test(BOOTSTRAP_ADMIN_PASSWORD)) {
+    throw new Error("BOOTSTRAP_ADMIN_PASSWORD must include uppercase, lowercase, number, and symbol.");
+  }
   if (!JWT_SECRET || JWT_SECRET.length < 32) {
     throw new Error("JWT_SECRET must be configured with at least 32 characters.");
   }

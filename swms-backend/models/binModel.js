@@ -11,7 +11,7 @@ const selection = `SELECT b.id, b.household_id AS "householdId", b.bin_code AS "
   JOIN collectors c ON c.id = h.collector_id
   JOIN representatives r ON r.id = c.representative_id`;
 
-exports.list = async (scope = {}) => {
+exports.list = async (scope = {}, pagination = { limit: 50, offset: 0 }) => {
   let query = selection;
   let values = [];
   if (scope.collectorId !== undefined) {
@@ -21,11 +21,12 @@ exports.list = async (scope = {}) => {
     query += " WHERE r.company_id = $1";
     values = [scope.companyId];
   }
-  const result = await pool.query(`${query} ORDER BY b.id`, values);
+  values.push(pagination.limit, pagination.offset);
+  const result = await pool.query(`${query} ORDER BY b.id LIMIT $${values.length - 1} OFFSET $${values.length}`, values);
   return result.rows;
 };
 
-exports.listFull = async (scope = {}) => {
+exports.listFull = async (scope = {}, pagination = { limit: 50, offset: 0 }) => {
   let query = selection + " WHERE b.status IN ('HIGH', 'FULL')";
   const values = [];
   if (scope.collectorId !== undefined) {
@@ -35,7 +36,8 @@ exports.listFull = async (scope = {}) => {
     values.push(scope.companyId);
     query += ` AND r.company_id = $${values.length}`;
   }
-  const result = await pool.query(`${query} ORDER BY b.fill_level DESC, b.id`, values);
+  values.push(pagination.limit, pagination.offset);
+  const result = await pool.query(`${query} ORDER BY b.fill_level DESC, b.id LIMIT $${values.length - 1} OFFSET $${values.length}`, values);
   return result.rows;
 };
 

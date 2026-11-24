@@ -40,6 +40,22 @@ function validateBody(schema) {
         errors.push(`${field} must be at least 8 characters long.`);
         continue;
       }
+      if (rule.type === "strongPassword" && typeof value !== "string") {
+        errors.push(`${field} must be a string.`);
+        continue;
+      }
+      if (rule.type === "strongPassword") {
+        const strongPassword =
+          value.length >= 12
+          && value.length <= 128
+          && /[a-z]/.test(value)
+          && /[A-Z]/.test(value)
+          && /\d/.test(value)
+          && /[^A-Za-z0-9]/.test(value);
+        if (!strongPassword) {
+          errors.push(`${field} must be 12-128 characters and include uppercase, lowercase, number, and symbol.`);
+        }
+      }
       if (rule.type === "enum" && !rule.values.includes(value)) {
         errors.push(`${field} must be one of: ${rule.values.join(", ")}.`);
         continue;

@@ -1,8 +1,9 @@
 const companyModel = require("../models/companyModel");
 const AppError = require("../utils/AppError");
+const auditModel = require("../models/auditModel");
 
 exports.list = async (_req, res) => {
-  res.json({ data: await companyModel.list() });
+  res.json({ data: await companyModel.list(_req.pagination) });
 };
 
 exports.get = async (req, res) => {

@@ -10,6 +10,7 @@ const {
 } = require("../middleware/authorization");
 const { validateBody, validateId, requireRoleFields } = require("../middleware/validate");
 const schemas = require("../validation/schemas");
+const validatePagination = require("../middleware/pagination");
 
 router.post(
   "/",
@@ -19,7 +20,7 @@ router.post(
   requireRoleFields({ ADMIN: ["collectorId"], COMPANY_REPRESENTATIVE: ["collectorId"] }),
   asyncHandler(controller.create)
 );
-router.get("/", authenticateToken, authorizeHouseholdReader, asyncHandler(controller.list));
+router.get("/", authenticateToken, authorizeHouseholdReader, validatePagination, asyncHandler(controller.list));
 router.get("/me", authenticateToken, authorizeHousehold, asyncHandler(controller.me));
 router.put(
   "/me",

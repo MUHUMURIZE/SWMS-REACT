@@ -8,6 +8,7 @@ const collectorModel = require("../models/collectorModel");
 const representativeModel = require("../models/representativeModel");
 const { createAccount } = require("../services/accountService");
 const AppError = require("../utils/AppError");
+const auditModel = require("../models/auditModel");
 
 exports.register = async (req, res) => {
   const {
@@ -32,6 +33,13 @@ exports.register = async (req, res) => {
     village,
   });
   const user = await userModel.findPublicById(created.userId);
+  await auditModel.record({
+    actorUserId: req.user.id,
+    action: "ACCOUNT_CREATED",
+    resourceType: role,
+    resourceId: created.resourceId,
+    ipAddress: req.ip,
+  });
   res.status(201).json({ data: { id: created.resourceId, user } });
 };
 
@@ -49,15 +57,34 @@ exports.login = async (req, res) => {
   const accessToken = jwt.sign(
     { id: user.id, role: user.role, tokenVersion: user.token_version, jti: tokenId },
     process.env.JWT_SECRET,
-    { expiresIn: "1h" }
+    {
+      algorithm: "HS256",
+      issuer: process.env.JWT_ISSUER || "swms-api",
+      audience: process.env.JWT_AUDIENCE || "swms-api",
+      expiresIn: "1h",
+    }
   );
   const publicUser = await userModel.findPublicById(user.id);
+  await auditModel.record({
+    actorUserId: user.id,
+    action: "LOGIN",
+    resourceType: "USER",
+    resourceId: user.id,
+    ipAddress: req.ip,
+  });
   res.json({ data: { user: publicUser, accessToken, tokenType: "Bearer", expiresIn: 3600 } });
 };
 
 exports.logout = async (req, res) => {
   const expiresAt = new Date(req.user.tokenExpiresAt);
   await userModel.revokeToken(req.user.tokenId, req.user.id, expiresAt);
+  await auditModel.record({
+    actorUserId: req.user.id,
+    action: "LOGOUT",
+    resourceType: "USER",
+    resourceId: req.user.id,
+    ipAddress: req.ip,
+  });
   res.json({ data: { message: "Logged out successfully." } });
 };
 
@@ -85,5 +112,12 @@ exports.changePassword = async (req, res) => {
   }
   const passwordHash = await bcrypt.hash(req.body.newPassword, 12);
   await userModel.updatePassword(req.user.id, passwordHash);
+  await auditModel.record({
+    actorUserId: req.user.id,
+    action: "PASSWORD_CHANGED",
+    resourceType: "USER",
+    resourceId: req.user.id,
+    ipAddress: req.ip,
+  });
   res.json({ data: { message: "Password changed. Sign in again to get a new access token." } });
 };

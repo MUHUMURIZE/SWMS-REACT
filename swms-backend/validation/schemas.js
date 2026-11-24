@@ -1,6 +1,7 @@
 const roles = ["ADMIN", "COMPANY_REPRESENTATIVE", "COLLECTOR", "HOUSEHOLD"];
-const statuses = ["pending", "scheduled", "in_progress", "collected", "completed", "missed"];
+const statuses = ["pending", "scheduled", "in_progress", "collected", "completed", "missed", "cancelled"];
 const text = (required = false, maxLength = 500) => ({ type: "string", required, maxLength });
+const strongPassword = (required = false) => ({ type: "strongPassword", required });
 const id = (required = false) => ({ type: "number", required });
 const location = {
   district: text(false, 160),
@@ -18,7 +19,7 @@ exports.login = {
 exports.account = {
   fullName: { type: "string", required: true, minLength: 1, maxLength: 160 },
   email: { type: "email", required: true, maxLength: 254 },
-  password: { type: "password", required: true },
+  password: strongPassword(true),
   role: { type: "enum", required: true, values: roles },
   phone: text(false, 32),
   companyId: id(),
@@ -45,7 +46,7 @@ exports.company = {
 exports.representativeCreate = {
   fullName: text(true, 160),
   email: { type: "email", required: true, maxLength: 254 },
-  password: { type: "password", required: true },
+  password: strongPassword(true),
   phone: text(false, 32),
   companyId: id(true),
   ...location,
@@ -59,7 +60,7 @@ exports.representativeUpdate = {
 exports.collectorCreate = {
   fullName: text(true, 160),
   email: { type: "email", required: true, maxLength: 254 },
-  password: { type: "password", required: true },
+  password: strongPassword(true),
   phone: text(false, 32),
   representativeId: id(),
   ...location,
@@ -73,7 +74,7 @@ exports.collectorUpdate = {
 exports.householdCreate = {
   fullName: text(true, 160),
   email: { type: "email", required: true, maxLength: 254 },
-  password: { type: "password", required: true },
+  password: strongPassword(true),
   phone: text(false, 32),
   collectorId: id(),
   address: { type: "string", required: true, minLength: 1, maxLength: 500 },
@@ -89,7 +90,7 @@ exports.householdUpdate = {
 };
 exports.changePassword = {
   currentPassword: { type: "password", required: true },
-  newPassword: { type: "password", required: true },
+  newPassword: strongPassword(true),
 };
 exports.collectionCreate = {
   householdId: id(true),

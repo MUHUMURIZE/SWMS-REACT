@@ -53,7 +53,7 @@ const bodyExamples = {
   "PUT /api/auth/profile": { fullName: "Jordan Smith", phone: "+10000000000" },
   "PUT /api/auth/change-password": {
     currentPassword: "current-password",
-    newPassword: "new-strong-password",
+    newPassword: "NewStrong123!",
   },
   "POST /api/companies": {
     name: "Green City Waste",
@@ -228,6 +228,11 @@ function schemaToOpenApi(schema) {
       property.type = "string";
       property.format = "password";
       property.minLength = 8;
+    } else if (rule.type === "strongPassword") {
+      property.type = "string";
+      property.format = "password";
+      property.minLength = 12;
+      property.maxLength = 128;
     } else if (rule.type === "datetime") {
       property.type = "string";
       property.format = "date-time";
@@ -508,6 +513,32 @@ function generatePaths() {
         description,
         operationId: id,
         ...(pathParameters.length ? { parameters: pathParameters } : {}),
+        ...(method === "get" && [
+          "/api/companies",
+          "/api/representatives",
+          "/api/collectors",
+          "/api/households",
+          "/api/bins",
+          "/api/bins/full",
+          "/api/collections",
+          "/api/notifications",
+        ].includes(openApiPath) ? {
+          parameters: [
+            ...(pathParameters),
+            {
+              name: "limit",
+              in: "query",
+              required: false,
+              schema: { type: "integer", minimum: 1, maximum: 200, default: 50 },
+            },
+            {
+              name: "offset",
+              in: "query",
+              required: false,
+              schema: { type: "integer", minimum: 0, default: 0 },
+            },
+          ],
+        } : {}),
         ...(requestSchema ? {
           requestBody: {
             required: true,

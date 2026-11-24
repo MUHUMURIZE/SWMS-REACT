@@ -35,14 +35,18 @@ async function findAccessibleHousehold(user, householdId) {
   throw new AppError(404, "Household not found.", "NOT_FOUND");
 }
 
-exports.list = async (user) => {
-  if (user.role === "ADMIN") return householdModel.list();
+exports.list = async (user, pagination = { limit: 50, offset: 0 }) => {
+  const useDefaultPagination = pagination.limit === 50 && pagination.offset === 0;
+  if (user.role === "ADMIN") return useDefaultPagination ? householdModel.list() : householdModel.list(null, pagination);
   if (user.role === "COLLECTOR") {
-    return householdModel.list(await getCurrentCollectorId(user.id));
+    const collectorId = await getCurrentCollectorId(user.id);
+    return useDefaultPagination ? householdModel.list(collectorId) : householdModel.list(collectorId, pagination);
   }
   if (user.role === "COMPANY_REPRESENTATIVE") {
     const representative = await getRepresentative(user.id);
-    return householdModel.listByCompany(representative.company_id);
+    return useDefaultPagination
+      ? householdModel.listByCompany(representative.company_id)
+      : householdModel.listByCompany(representative.company_id, pagination);
   }
   throw new AppError(403, "You do not have permission to list households.");
 };

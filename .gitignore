@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment and secret files
+.env
+.env.*
+!.env.example
+swms-backend/.env
+swms-backend/.env.*
+!swms-backend/.env.example
+
+# Logs and local database files
+*.log
+*.sqlite
+*.sqlite3
+
+# Runtime and editor files
+.DS_Store
+.vscode/
+.idea/
+coverage/

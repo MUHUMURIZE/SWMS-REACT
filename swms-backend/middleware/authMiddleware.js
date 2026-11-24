@@ -12,7 +12,11 @@ async function authenticateToken(req, _res, next) {
 
     let payload;
     try {
-      payload = jwt.verify(match[1], process.env.JWT_SECRET);
+      payload = jwt.verify(match[1], process.env.JWT_SECRET, {
+        algorithms: ["HS256"],
+        issuer: process.env.JWT_ISSUER || "swms-api",
+        audience: process.env.JWT_AUDIENCE || "swms-api",
+      });
     } catch {
       throw new AppError(401, "The access token is invalid or expired.", "UNAUTHENTICATED");
     }

@@ -11,17 +11,17 @@ const selection = `SELECT h.id, h.user_id AS "userId", h.collector_id AS "collec
   JOIN representatives r ON r.id = c.representative_id
   JOIN users cuser ON cuser.id = c.user_id`;
 
-exports.list = async (collectorId = null) => {
+exports.list = async (collectorId = null, pagination = { limit: 50, offset: 0 }) => {
   const result = collectorId === null
-    ? await pool.query(`${selection} ORDER BY h.id`)
-    : await pool.query(`${selection} WHERE h.collector_id = $1 ORDER BY h.id`, [collectorId]);
+    ? await pool.query(`${selection} ORDER BY h.id LIMIT $1 OFFSET $2`, [pagination.limit, pagination.offset])
+    : await pool.query(`${selection} WHERE h.collector_id = $1 ORDER BY h.id LIMIT $2 OFFSET $3`, [collectorId, pagination.limit, pagination.offset]);
   return result.rows;
 };
 
-exports.listByCompany = async (companyId) => {
+exports.listByCompany = async (companyId, pagination = { limit: 50, offset: 0 }) => {
   const result = await pool.query(
-    `${selection} WHERE r.company_id = $1 ORDER BY h.id`,
-    [companyId]
+    `${selection} WHERE r.company_id = $1 ORDER BY h.id LIMIT $2 OFFSET $3`,
+    [companyId, pagination.limit, pagination.offset]
   );
   return result.rows;
 };
@@ -76,6 +76,16 @@ exports.update = async (id, { fullName, phone, address, nationalId, district, se
 exports.remove = async (id) => {
   const lookup = await pool.query("SELECT user_id FROM households WHERE id = $1", [id]);
   if (!lookup.rows[0]) return false;
+  const dependencies = await pool.query(
+    "SELECT 1 FROM collections WHERE household_id = $1 LIMIT 1",
+    [id]
+  );
+  if (dependencies.rows[0]) {
+    const error = new Error("A household with collection history cannot be deleted.");
+    error.statusCode = 409;
+    error.code = "CONFLICT";
+    throw error;
+  }
   await pool.query("DELETE FROM users WHERE id = $1", [lookup.rows[0].user_id]);
   return true;
 };

@@ -3,9 +3,10 @@ const householdModel = require("../models/householdModel");
 const userModel = require("../models/userModel");
 const householdService = require("../services/householdService");
 const AppError = require("../utils/AppError");
+const auditModel = require("../models/auditModel");
 
 exports.list = async (req, res) => {
-  const households = await householdService.list(req.user);
+  const households = await householdService.list(req.user, req.pagination);
   res.json({ data: households });
 };
 
@@ -31,6 +32,13 @@ exports.update = async (req, res) => {
 
 exports.remove = async (req, res) => {
   await householdService.remove(req.user, req.params.id);
+  await auditModel.record({
+    actorUserId: req.user.id,
+    action: "HOUSEHOLD_DELETED",
+    resourceType: "HOUSEHOLD",
+    resourceId: req.params.id,
+    ipAddress: req.ip,
+  });
   res.status(204).end();
 };
 

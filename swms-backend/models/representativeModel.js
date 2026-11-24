@@ -8,8 +8,11 @@ const selection = `SELECT r.id, r.user_id AS "userId", r.company_id AS "companyI
   JOIN users u ON u.id = r.user_id
   JOIN companies c ON c.id = r.company_id`;
 
-exports.list = async () => {
-  const result = await pool.query(`${selection} ORDER BY r.id`);
+exports.list = async (pagination = { limit: 50, offset: 0 }) => {
+  const result = await pool.query(
+    `${selection} ORDER BY r.id LIMIT $1 OFFSET $2`,
+    [pagination.limit, pagination.offset]
+  );
   return result.rows;
 };
 

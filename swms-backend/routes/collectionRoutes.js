@@ -9,10 +9,11 @@ const {
 } = require("../middleware/authorization");
 const { validateBody, validateId } = require("../middleware/validate");
 const schemas = require("../validation/schemas");
+const validatePagination = require("../middleware/pagination");
 
 router.use(authenticateToken);
 router.post("/", authorizeCollectionManager, validateBody(schemas.collectionCreate), asyncHandler(controller.create));
-router.get("/", asyncHandler(controller.list));
+router.get("/", validatePagination, asyncHandler(controller.list));
 router.get("/:id", validateId, asyncHandler(controller.get));
 router.put("/:id/status", authorizeCollectionManager, validateId, validateBody(schemas.collectionStatus), asyncHandler(controller.updateStatus));
 router.put("/:id", authorizeCollectionManager, validateId, validateBody(schemas.collectionUpdate), asyncHandler(controller.update));

@@ -23,7 +23,10 @@ const selection = `SELECT cl.id, cl.household_id AS "householdId",
   JOIN users cu ON cu.id = c.user_id
   JOIN representatives rep ON rep.id = c.representative_id`;
 
-exports.list = async ({ role, companyId, collectorId, householdId }) => {
+exports.list = async (
+  { role, companyId, collectorId, householdId },
+  pagination = { limit: 50, offset: 0 }
+) => {
   let where = "";
   let values = [];
   if (role === "COMPANY_REPRESENTATIVE") {
@@ -36,9 +39,13 @@ exports.list = async ({ role, companyId, collectorId, householdId }) => {
     where = " WHERE h.id = $1";
     values = [householdId];
   }
-  const result = values.length
-    ? await pool.query(`${selection}${where} ORDER BY cl.scheduled_at DESC, cl.id DESC`, values)
-    : await pool.query(`${selection} ORDER BY cl.scheduled_at DESC, cl.id DESC`);
+  const queryValues = [...values, pagination.limit, pagination.offset];
+  const limitOffset = values.length
+    ? ` LIMIT $${values.length + 1} OFFSET $${values.length + 2}`
+    : " LIMIT $1 OFFSET $2";
+  const result = queryValues.length
+    ? await pool.query(`${selection}${where} ORDER BY cl.scheduled_at DESC, cl.id DESC${limitOffset}`, queryValues)
+    : await pool.query(`${selection} ORDER BY cl.scheduled_at DESC, cl.id DESC${limitOffset}`, queryValues);
   return result.rows;
 };
 

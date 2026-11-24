@@ -2,7 +2,7 @@ const notificationModel = require("../models/notificationModel");
 const AppError = require("../utils/AppError");
 
 exports.list = async (req, res) => {
-  res.json({ data: await notificationModel.listForUser(req.user.id) });
+  res.json({ data: await notificationModel.listForUser(req.user.id, req.pagination) });
 };
 
 exports.markRead = async (req, res) => {

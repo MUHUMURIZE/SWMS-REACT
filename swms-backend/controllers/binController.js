@@ -1,11 +1,12 @@
 const binService = require("../services/binService");
+const auditModel = require("../models/auditModel");
 
 exports.list = async (req, res) => {
-  res.json({ data: await binService.list(req.user) });
+  res.json({ data: await binService.list(req.user, false, req.pagination) });
 };
 
 exports.listFull = async (req, res) => {
-  res.json({ data: await binService.list(req.user, true) });
+  res.json({ data: await binService.list(req.user, true, req.pagination) });
 };
 
 exports.get = async (req, res) => {
@@ -13,7 +14,15 @@ exports.get = async (req, res) => {
 };
 
 exports.create = async (req, res) => {
-  res.status(201).json({ data: await binService.create(req.user, req.body) });
+  const bin = await binService.create(req.user, req.body);
+  await auditModel.record({
+    actorUserId: req.user.id,
+    action: "BIN_CREATED",
+    resourceType: "WASTE_BIN",
+    resourceId: bin.id,
+    ipAddress: req.ip,
+  });
+  res.status(201).json({ data: bin });
 };
 
 exports.update = async (req, res) => {
@@ -26,7 +35,16 @@ exports.remove = async (req, res) => {
 };
 
 exports.updateProgress = async (req, res) => {
-  res.json({ data: await binService.updateProgress(req.user, req.params.id, req.body.fillLevel) });
+  const bin = await binService.updateProgress(req.user, req.params.id, req.body.fillLevel);
+  await auditModel.record({
+    actorUserId: req.user.id,
+    action: "BIN_FILL_UPDATED",
+    resourceType: "WASTE_BIN",
+    resourceId: req.params.id,
+    ipAddress: req.ip,
+    metadata: { fillLevel: req.body.fillLevel },
+  });
+  res.json({ data: bin });
 };
 
 exports.empty = async (req, res) => {

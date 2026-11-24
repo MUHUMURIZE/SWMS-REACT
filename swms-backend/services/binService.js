@@ -45,11 +45,14 @@ async function accessibleBin(user, binId) {
 
 exports.statusFor = statusFor;
 
-exports.list = async (user, fullOnly = false) => {
+exports.list = async (user, fullOnly = false, pagination = { limit: 50, offset: 0 }) => {
   let scope = {};
   if (user.role === "COLLECTOR") scope = scopeFor(user.role, await collectorIdFor(user.id));
   if (user.role === "COMPANY_REPRESENTATIVE") scope = scopeFor(user.role, await companyIdFor(user.id));
-  return fullOnly ? binModel.listFull(scope) : binModel.list(scope);
+  const useDefaultPagination = pagination.limit === 50 && pagination.offset === 0;
+  return fullOnly
+    ? (useDefaultPagination ? binModel.listFull(scope) : binModel.listFull(scope, pagination))
+    : (useDefaultPagination ? binModel.list(scope) : binModel.list(scope, pagination));
 };
 
 exports.get = (user, id) => accessibleBin(user, id);

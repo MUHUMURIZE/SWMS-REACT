@@ -4,6 +4,7 @@ const collectorModel = require("../models/collectorModel");
 const representativeModel = require("../models/representativeModel");
 const { createAccount } = require("../services/accountService");
 const AppError = require("../utils/AppError");
+const auditModel = require("../models/auditModel");
 
 exports.list = async (req, res) => {
   let companyId = null;
@@ -12,7 +13,7 @@ exports.list = async (req, res) => {
     if (!representative) throw new AppError(404, "Representative profile not found.", "NOT_FOUND");
     companyId = representative.companyId;
   }
-  res.json({ data: await collectorModel.list(companyId) });
+  res.json({ data: await collectorModel.list(companyId, req.pagination) });
 };
 
 exports.get = async (req, res) => {
@@ -94,6 +95,13 @@ exports.remove = async (req, res) => {
       throw new AppError(404, "Collector not found.", "NOT_FOUND");
     }
   }
+  const dependencies = await pool.query(
+    "SELECT 1 FROM households WHERE collector_id = $1 LIMIT 1",
+    [req.params.id]
+  );
+  if (dependencies.rows[0]) {
+    throw new AppError(409, "A collector with assigned households cannot be deleted.", "CONFLICT");
+  }
   const connection = await pool.connect();
   try {
     await connection.query("BEGIN");
@@ -112,5 +120,12 @@ exports.remove = async (req, res) => {
   } finally {
     connection.release();
   }
+  await auditModel.record({
+    actorUserId: req.user.id,
+    action: "COLLECTOR_DELETED",
+    resourceType: "COLLECTOR",
+    resourceId: req.params.id,
+    ipAddress: req.ip,
+  });
   res.status(204).end();
 };

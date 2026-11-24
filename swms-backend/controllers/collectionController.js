@@ -2,6 +2,7 @@ const { pool } = require("../config/db");
 const collectionModel = require("../models/collectionModel");
 const householdModel = require("../models/householdModel");
 const AppError = require("../utils/AppError");
+const auditModel = require("../models/auditModel");
 
 async function getCurrentProfileId(table, userId) {
   const result = await pool.query(`SELECT id FROM ${table} WHERE user_id = $1`, [userId]);
@@ -43,7 +44,7 @@ exports.list = async (req, res) => {
   if (req.user.role !== "ADMIN" && !scope.companyId && !scope.collectorId && !scope.householdId) {
     throw new AppError(404, "User profile not found.", "NOT_FOUND");
   }
-  res.json({ data: await collectionModel.list(scope) });
+  res.json({ data: await collectionModel.list(scope, req.pagination) });
 };
 
 exports.get = async (req, res) => {
@@ -79,6 +80,13 @@ exports.create = async (req, res) => {
     notes,
     createdBy: req.user.id,
   });
+  await auditModel.record({
+    actorUserId: req.user.id,
+    action: "COLLECTION_CREATED",
+    resourceType: "COLLECTION",
+    resourceId: collection.id,
+    ipAddress: req.ip,
+  });
   res.status(201).json({ data: collection });
 };
 
@@ -99,6 +107,13 @@ exports.update = async (req, res) => {
     throw new AppError(400, "Collection household and collector assignments cannot be changed.");
   }
   const updated = await collectionModel.update(req.params.id, req.body);
+  await auditModel.record({
+    actorUserId: req.user.id,
+    action: "COLLECTION_UPDATED",
+    resourceType: "COLLECTION",
+    resourceId: req.params.id,
+    ipAddress: req.ip,
+  });
   res.json({ data: updated });
 };
 
@@ -111,6 +126,14 @@ exports.updateStatus = async (req, res) => {
     throw new AppError(403, "Households cannot update collection status.");
   }
   const updated = await collectionModel.updateStatus(req.params.id, req.body.status);
+  await auditModel.record({
+    actorUserId: req.user.id,
+    action: "COLLECTION_STATUS_UPDATED",
+    resourceType: "COLLECTION",
+    resourceId: req.params.id,
+    ipAddress: req.ip,
+    metadata: { status: req.body.status },
+  });
   res.json({ data: updated });
 };
 
@@ -122,7 +145,17 @@ exports.remove = async (req, res) => {
   if (req.user.role === "HOUSEHOLD") {
     throw new AppError(403, "Households cannot delete collection records.");
   }
+  if (["in_progress", "collected", "completed"].includes(collection.status)) {
+    throw new AppError(409, "Active or completed collections cannot be deleted.", "CONFLICT");
+  }
   await collectionModel.remove(req.params.id);
+  await auditModel.record({
+    actorUserId: req.user.id,
+    action: "COLLECTION_DELETED",
+    resourceType: "COLLECTION",
+    resourceId: req.params.id,
+    ipAddress: req.ip,
+  });
   res.status(204).end();
 };
 

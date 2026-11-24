@@ -6,6 +6,7 @@ const { authenticateToken } = require("../middleware/authMiddleware");
 const { authorizeAdmin } = require("../middleware/authorization");
 const { validateBody } = require("../middleware/validate");
 const schemas = require("../validation/schemas");
+const loginAttempts = require("../middleware/loginRateLimiter");
 
 router.post(
   "/register",
@@ -27,7 +28,7 @@ router.post(
     return controller.register(req, res);
   })
 );
-router.post("/login", validateBody(schemas.login), asyncHandler(controller.login));
+router.post("/login", loginAttempts, validateBody(schemas.login), asyncHandler(controller.login));
 router.post("/logout", authenticateToken, asyncHandler(controller.logout));
 router.get("/profile", authenticateToken, asyncHandler(controller.profile));
 router.put("/profile", authenticateToken, validateBody(schemas.profile), asyncHandler(controller.updateProfile));
