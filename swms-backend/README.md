@@ -37,6 +37,7 @@ swms-backend/
 
    ```powershell
    psql -U postgres -d "SWMS_db" -f database\schema.sql
+   npm run migrate
    ```
 
 4. Install the backend dependencies and create the first administrator:
@@ -49,6 +50,13 @@ swms-backend/
    ```
 
 The API listens on `http://localhost:3000` by default. `GET /health` checks connectivity to PostgreSQL. The first administrator is created only by the bootstrap script; subsequent accounts are created through the protected API.
+
+## Production configuration
+
+- Set `API_SERVER_URL` to the public API origin used in OpenAPI documentation and `CORS_ORIGINS` to the exact permitted frontend origins.
+- Set `REDIS_URL` for production. Login throttling uses Redis-backed shared storage, and the server waits for Redis before accepting requests; it does not fall back to per-process throttling in production.
+- Set `TRUST_PROXY_HOPS` to the exact number of trusted reverse-proxy hops, or leave it at `0` when the API is directly exposed. Do not trust forwarded headers from untrusted clients.
+- Keep Redis and database credentials in the deployment secret manager. Do not put production credentials in `.env.example` or commit them.
 
 ## Database
 
@@ -66,7 +74,8 @@ Relationship summary: each company has one Company Representative account; that 
 - Creating or changing a collection creates a notification for the affected household.
 - Logout revokes the current JWT. Changing a password increments the user's token version, invalidating all outstanding tokens.
 - Deleting a representative or collector cascades through that account's lower-level household accounts and their collections. Company deletion is rejected while representatives are assigned.
-- Collection statuses are `pending`, `scheduled`, `in_progress`, `collected`, `completed`, and `missed`.
+- Collection statuses are `pending`, `scheduled`, `in_progress`, `collected`, `completed`, `missed`, and `cancelled`. New collections may start only as `pending` or `scheduled`; subsequent transitions are enforced by the API and PostgreSQL migration.
+- Completing a collection atomically updates its state, empties the household bin, creates completion notifications, and writes the audit record. Repeated or concurrent completion requests do not repeat those side effects.
 
 ## Swagger API documentation and testing
 

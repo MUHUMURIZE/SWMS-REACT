@@ -1,5 +1,6 @@
 const { pool } = require("../config/db");
 const notificationModel = require("../models/notificationModel");
+const runTransaction = require("../utils/transaction");
 
 async function addNotificationForUser(executor, userId, notification) {
   if (!userId) return;
@@ -69,8 +70,8 @@ exports.notifyBinFillLevel = async (bin, fillLevel) => {
   }
 };
 
-exports.notifyCollectionCompleted = async (householdId, collectionId) => {
-  const result = await pool.query(
+async function insertCollectionCompletedNotifications(executor, householdId, collectionId) {
+  const result = await executor.query(
     `SELECT hu.id AS household_user_id,
       cu.id AS collector_user_id,
       ru.id AS representative_user_id
@@ -94,17 +95,16 @@ exports.notifyCollectionCompleted = async (householdId, collectionId) => {
     resourceType: "COLLECTION",
     resourceId: collectionId,
   };
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    await addNotificationForUser(client, recipients.household_user_id, notification);
-    await addNotificationForUser(client, recipients.collector_user_id, notification);
-    await addNotificationForUser(client, recipients.representative_user_id, notification);
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
+  await addNotificationForUser(executor, recipients.household_user_id, notification);
+  await addNotificationForUser(executor, recipients.collector_user_id, notification);
+  await addNotificationForUser(executor, recipients.representative_user_id, notification);
+}
+
+exports.notifyCollectionCompleted = async (householdId, collectionId, executor) => {
+  if (executor) {
+    return insertCollectionCompletedNotifications(executor, householdId, collectionId);
   }
+  return runTransaction((client) =>
+    insertCollectionCompletedNotifications(client, householdId, collectionId)
+  );
 };

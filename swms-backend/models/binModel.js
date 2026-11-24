@@ -41,8 +41,8 @@ exports.listFull = async (scope = {}, pagination = { limit: 50, offset: 0 }) => 
   return result.rows;
 };
 
-exports.findById = async (id) => {
-  const result = await pool.query(`${selection} WHERE b.id = $1`, [id]);
+exports.findById = async (id, executor = pool) => {
+  const result = await executor.query(`${selection} WHERE b.id = $1`, [id]);
   return result.rows[0] || null;
 };
 
@@ -78,15 +78,15 @@ exports.update = async (id, { binCode, capacity }) => {
   return exports.findById(id);
 };
 
-exports.updateProgress = async (id, fillLevel, status) => {
-  await pool.query(
+exports.updateProgress = async (id, fillLevel, status, executor = pool) => {
+  await executor.query(
     "UPDATE waste_bins SET fill_level = $1, status = $2 WHERE id = $3",
     [fillLevel, status, id]
   );
-  return exports.findById(id);
+  return exports.findById(id, executor);
 };
 
-exports.empty = async (id) => exports.updateProgress(id, 0, "EMPTY");
+exports.empty = async (id, executor = pool) => exports.updateProgress(id, 0, "EMPTY", executor);
 
 exports.remove = async (id) => {
   const result = await pool.query("DELETE FROM waste_bins WHERE id = $1", [id]);

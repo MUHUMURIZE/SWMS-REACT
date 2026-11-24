@@ -6,7 +6,7 @@ const { authenticateToken } = require("../middleware/authMiddleware");
 const { authorizeAdmin } = require("../middleware/authorization");
 const { validateBody } = require("../middleware/validate");
 const schemas = require("../validation/schemas");
-const loginAttempts = require("../middleware/loginRateLimiter");
+const { loginAttempts } = require("../middleware/loginRateLimiter");
 
 router.post(
   "/register",

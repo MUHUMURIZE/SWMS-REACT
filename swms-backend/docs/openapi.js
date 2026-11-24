@@ -237,6 +237,7 @@ function schemaToOpenApi(schema) {
       property.format = "password";
       property.minLength = 12;
       property.maxLength = 128;
+      property.description = "Must include uppercase, lowercase, a number, and a symbol.";
     } else if (rule.type === "datetime") {
       property.type = "string";
       property.format = "date-time";
@@ -330,25 +331,95 @@ const locationExample = {
 const profileExamples = {
   "/api/companies": {
     id: 1, name: "Green City Waste", ...locationExample,
+    createdAt: "2026-11-24T08:00:00.000Z", updatedAt: "2026-11-24T08:00:00.000Z",
   },
   "/api/representatives": {
     id: 1, userId: 2, companyId: 1, companyName: "Green City Waste",
     fullName: "Riley Representative", email: "riley@example.com",
     phone: "+10000000000", ...locationExample,
+    createdAt: "2026-11-24T08:00:00.000Z", updatedAt: "2026-11-24T08:00:00.000Z",
   },
   "/api/collectors": {
     id: 1, userId: 3, representativeId: 1, companyId: 1,
     fullName: "Jordan Collector", email: "jordan@example.com",
     phone: "+10000000000", representativeName: "Riley Representative",
     ...locationExample,
+    createdAt: "2026-11-24T08:00:00.000Z", updatedAt: "2026-11-24T08:00:00.000Z",
   },
   "/api/households": {
     id: 1, userId: 4, collectorId: 1, address: "10 Main St",
     nationalId: null, fullName: "Taylor Household", email: "taylor@example.com",
     phone: "+10000000000", collectorName: "Jordan Collector", companyId: 1,
     ...locationExample,
+    createdAt: "2026-11-24T08:00:00.000Z", updatedAt: "2026-11-24T08:00:00.000Z",
   },
 };
+
+const binExample = {
+  id: 1,
+  householdId: 1,
+  binCode: "BIN-0001",
+  capacity: 120,
+  fillLevel: 85,
+  status: "HIGH",
+  createdAt: "2026-11-24T08:00:00.000Z",
+  updatedAt: "2026-11-24T08:00:00.000Z",
+  householdName: "Taylor Household",
+  collectorId: 1,
+  companyId: 1,
+};
+
+const collectionExample = {
+  id: 1,
+  householdId: 1,
+  collectorId: 1,
+  scheduledAt: "2026-11-25T09:00:00.000Z",
+  status: "scheduled",
+  originalScheduledAt: null,
+  rescheduledAt: null,
+  notes: "Scheduled pickup",
+  collectedAt: null,
+  createdBy: 2,
+  createdAt: "2026-11-24T08:00:00.000Z",
+  updatedAt: "2026-11-24T08:00:00.000Z",
+  householdName: "Taylor Household",
+  collectorName: "Jordan Collector",
+  representativeId: 1,
+  companyId: 1,
+};
+
+const collectionExamplesBySchedule = {
+  upcoming: collectionExample,
+  missed: { ...collectionExample, status: "missed", scheduledAt: "2026-11-23T09:00:00.000Z" },
+  overdue: { ...collectionExample, status: "pending", scheduledAt: "2026-11-23T09:00:00.000Z" },
+  rescheduled: {
+    ...collectionExample,
+    originalScheduledAt: "2026-11-23T09:00:00.000Z",
+    rescheduledAt: "2026-11-24T08:00:00.000Z",
+  },
+};
+
+const completedCollectionExample = {
+  ...collectionExample,
+  scheduledAt: "2026-11-23T09:00:00.000Z",
+  status: "completed",
+  collectedAt: "2026-11-23T09:30:00.000Z",
+};
+
+const reportExample = {
+  totalHouseholds: 42,
+  totalBins: 42,
+  emptyBins: 8,
+  lowBins: 12,
+  mediumBins: 10,
+  highBins: 8,
+  fullBins: 4,
+  collectionsCompleted: 120,
+  collectionsPending: 14,
+  collectionsInProgress: 3,
+};
+
+const configuredServerUrl = (process.env.API_SERVER_URL || "").trim();
 
 function exampleForSuccess(method, routePath) {
   if (method === "delete") return undefined;
@@ -360,32 +431,68 @@ function exampleForSuccess(method, routePath) {
   if (profileRoute && (method === "get" || method === "post" || method === "put")) {
     return { data: profileExamples[profileRoute] };
   }
-  if (method === "get" && ["/api/bins", "/api/bins/full", "/api/collections",
-    "/api/notifications"].includes(routePath)) {
-    return { data: [] };
+  if (method === "get" && ["/api/bins", "/api/bins/full"].includes(routePath)) {
+    return { data: [binExample] };
   }
-  if (routePath === "/api/my-bin" || routePath === "/api/bins/{id}"
-    || routePath === "/api/bins/{id}/progress" || routePath === "/api/bins/{id}/empty") {
+  if (method === "get" && routePath === "/api/notifications") {
     return {
-      data: {
+      data: [{
         id: 1,
-        householdId: 1,
-        binCode: "BIN-0001",
-        capacity: 120,
-        fillLevel: routePath.endsWith("/empty") ? 0 : 85,
-        status: routePath.endsWith("/empty") ? "EMPTY" : "HIGH",
-      },
+        userId: 4,
+        title: "Collection scheduled",
+        message: "A waste collection has been scheduled for 2026-11-25T09:00:00.000Z.",
+        readAt: null,
+        category: null,
+        priority: "normal",
+        resourceType: null,
+        resourceId: null,
+        createdAt: "2026-11-24T08:00:00.000Z",
+      }],
     };
   }
+  if (routePath === "/api/collections" || routePath === "/api/collections/{id}"
+    || routePath === "/api/collections/{id}/status"
+    || routePath === "/api/collections/scheduling/upcoming"
+    || routePath === "/api/collections/scheduling/missed"
+    || routePath === "/api/collections/scheduling/overdue"
+    || routePath === "/api/collections/scheduling/rescheduled") {
+    if (routePath === "/api/collections/{id}/status") return { data: completedCollectionExample };
+    if (routePath.startsWith("/api/collections/scheduling/")) {
+      const mode = routePath.split("/").pop();
+      return { data: [collectionExamplesBySchedule[mode]] };
+    }
+    if (routePath === "/api/collections") {
+      return { data: method === "get" ? [collectionExample] : collectionExample };
+    }
+    return { data: collectionExample };
+  }
+  if (routePath.startsWith("/api/reports/")) {
+    return { data: reportExample };
+  }
+  if (routePath === "/api/my-bin") {
+    const { id, householdId, binCode, capacity, fillLevel, status, createdAt, updatedAt } = binExample;
+    return { data: { id, householdId, binCode, capacity, fillLevel, status, createdAt, updatedAt } };
+  }
+  if (routePath === "/api/bins/{id}"
+    || routePath === "/api/bins/{id}/progress" || routePath === "/api/bins/{id}/empty") {
+    return { data: routePath.endsWith("/empty") ? { ...binExample, fillLevel: 0, status: "EMPTY" } : binExample };
+  }
   if (routePath === "/api/bins" && method === "post") {
+    return { data: { ...binExample, fillLevel: 0, status: "EMPTY" } };
+  }
+  if (routePath === "/api/auth/register") {
     return {
       data: {
         id: 1,
-        householdId: 1,
-        binCode: "BIN-0001",
-        capacity: 120,
-        fillLevel: 0,
-        status: "EMPTY",
+        user: {
+          id: 3,
+          fullName: "Jordan Collector",
+          email: "jordan@example.com",
+          role: "COLLECTOR",
+          phone: "+10000000000",
+          createdAt: "2026-11-24T08:00:00.000Z",
+          updatedAt: "2026-11-24T08:00:00.000Z",
+        },
       },
     };
   }
@@ -399,22 +506,153 @@ function exampleForSuccess(method, routePath) {
       },
     };
   }
-  if (method === "get" && routePath.startsWith("/api/dashboard/")) {
-    return { data: { ...locationExample, message: "Dashboard data for the authenticated role." } };
+  if (method === "get" && routePath === "/api/dashboard/admin") {
+    return {
+      data: {
+        totalCompanies: 4,
+        totalRepresentatives: 4,
+        totalCollectors: 18,
+        totalHouseholds: 420,
+        totalCollections: 850,
+        completedCollections: 620,
+        pendingCollections: 90,
+        inProgressCollections: 12,
+        missedCollections: 18,
+        overdueCollections: 7,
+        emptyBins: 80,
+        lowBins: 120,
+        mediumBins: 100,
+        highBins: 80,
+        fullBins: 40,
+        topDistricts: [{ district: "Kayonza", count: 120 }],
+        topCompanies: [{ company: "Green City Waste", completed: 150, total: 180, completionRate: 83.33 }],
+        collectionCompletionRate: 72.94,
+        totalBins: 420,
+        binsRequiringPickup: 120,
+      },
+    };
+  }
+  if (method === "get" && routePath === "/api/dashboard/company") {
+    return {
+      data: {
+        totalCollectors: 8,
+        totalHouseholds: 210,
+        totalCollections: 420,
+        completedCollections: 310,
+        pendingCollections: 50,
+        inProgressCollections: 8,
+        missedCollections: 10,
+        overdueCollections: 4,
+        fullBinMetrics: 35,
+        collectorPerformance: [{
+          collector: "Jordan Collector",
+          households: 28,
+          completedCollections: 42,
+          totalCollections: 50,
+        }],
+        district: "Kayonza",
+        sector: "Gahini",
+        cell: "Kiyenzi",
+        village: "Rugarama",
+        completionRate: 73.81,
+        totalBins: 210,
+        binsRequiringPickup: 62,
+      },
+    };
+  }
+  if (method === "get" && routePath === "/api/dashboard/collector") {
+    return {
+      data: {
+        myHouseholds: 28,
+        pendingCollections: 8,
+        completedCollections: 42,
+        inProgressCollections: 2,
+        missedCollections: 1,
+        overdueCollections: 1,
+        binsRequiringImmediatePickup: 6,
+        todayCollections: 4,
+        district: "Kayonza",
+        sector: "Gahini",
+        cell: "Kiyenzi",
+        village: "Rugarama",
+        assignedBins: 28,
+        fullBinsRequiringPickup: 6,
+      },
+    };
+  }
+  if (method === "get" && routePath === "/api/dashboard/household") {
+    return {
+      data: {
+        district: "Kayonza",
+        sector: "Gahini",
+        cell: "Kiyenzi",
+        village: "Rugarama",
+        totalCollections: 8,
+        completedCollections: 6,
+        pendingCollections: 1,
+        inProgressCollections: 0,
+        missedCollections: 1,
+        binFillTrend: [{
+          fillLevel: 85,
+          status: "HIGH",
+          recordedAt: "2026-11-24T08:00:00.000Z",
+        }],
+        nextCollection: collectionExample,
+        currentCollection: null,
+        history: [completedCollectionExample],
+        bin: {
+          binCode: binExample.binCode,
+          capacity: binExample.capacity,
+          fillLevel: binExample.fillLevel,
+          status: binExample.status,
+        },
+      },
+    };
   }
   if (routePath === "/api/me" || routePath === "/api/households/me") {
     return {
       data: {
-        user: { id: 1, fullName: "Taylor Household", email: "taylor@example.com", role: "HOUSEHOLD" },
-        profile: { id: 1, ...locationExample },
+        user: {
+          id: 4,
+          fullName: "Taylor Household",
+          email: "taylor@example.com",
+          role: "HOUSEHOLD",
+          phone: "+10000000000",
+          createdAt: "2026-11-24T08:00:00.000Z",
+          updatedAt: "2026-11-24T08:00:00.000Z",
+        },
+        profile: profileExamples["/api/households"],
+      },
+    };
+  }
+  if (routePath === "/api/auth/profile" && method === "put") {
+    return {
+      data: {
+        user: {
+          id: 3,
+          fullName: "Jordan Collector",
+          email: "jordan@example.com",
+          role: "COLLECTOR",
+          phone: "+10000000000",
+          createdAt: "2026-11-24T08:00:00.000Z",
+          updatedAt: "2026-11-24T08:00:00.000Z",
+        },
       },
     };
   }
   if (routePath === "/api/auth/profile") {
     return {
       data: {
-        user: { id: 1, fullName: "Jordan Collector", email: "jordan@example.com", role: "COLLECTOR" },
-        profile: { id: 1, representativeId: 1, ...locationExample },
+        user: {
+          id: 3,
+          fullName: "Jordan Collector",
+          email: "jordan@example.com",
+          role: "COLLECTOR",
+          phone: "+10000000000",
+          createdAt: "2026-11-24T08:00:00.000Z",
+          updatedAt: "2026-11-24T08:00:00.000Z",
+        },
+        profile: profileExamples["/api/collectors"],
       },
     };
   }
@@ -423,9 +661,24 @@ function exampleForSuccess(method, routePath) {
   if (routePath === "/api/auth/change-password") {
     return { data: { message: "Password changed. Sign in again to get a new access token." } };
   }
-  if (routePath === "/api/notifications/{id}/read") return { data: { id: 1, read: true } };
+  if (routePath === "/api/notifications/{id}/read")   return { data: { id: 1, read: true } };
   if (routePath === "/api/my-progress") return { data: { counts: [{ status: "completed", count: 3 }] } };
-  if (routePath === "/api/my-notifications") return { data: [] };
+  if (routePath === "/api/my-notifications") {
+    return {
+      data: [{
+        id: 1,
+        userId: 4,
+        title: "Collection scheduled",
+        message: "A waste collection has been scheduled for 2026-11-25T09:00:00.000Z.",
+        readAt: null,
+        category: null,
+        priority: "normal",
+        resourceType: null,
+        resourceId: null,
+        createdAt: "2026-11-24T08:00:00.000Z",
+      }],
+    };
+  }
   return { data: { id: 1, message: "Request completed successfully." } };
 }
 
@@ -547,6 +800,12 @@ function generatePaths() {
         getOperationRoles(routeCode, globalGuards),
         "Successful JSON responses use a data envelope; errors use an error envelope.",
         findRoleRequirements(routeCode),
+        openApiPath === "/api/collections" && method === "post"
+          ? "New collections may start only as pending or scheduled."
+          : "",
+        openApiPath === "/api/collections/{id}/status"
+          ? "Transitions are enforced: pending to scheduled/missed/cancelled; scheduled to in_progress/missed/cancelled; in_progress to collected/missed/cancelled; collected to completed."
+          : "",
       ].join(" ");
       const operation = {
         tags: [openApiPath === "/api/my-bin" ? "Waste Bins" : routeFile.tag],
@@ -563,6 +822,10 @@ function generatePaths() {
           "/api/bins/full",
           "/api/collections",
           "/api/notifications",
+          "/api/collections/scheduling/upcoming",
+          "/api/collections/scheduling/missed",
+          "/api/collections/scheduling/overdue",
+          "/api/collections/scheduling/rescheduled",
         ].includes(openApiPath) ? {
           parameters: [
             ...(pathParameters),
@@ -673,7 +936,10 @@ const definition = {
       "Protected endpoints describe the required roles. Request body schemas are generated from `validation/schemas.js` and route definitions are scanned from `routes/`.",
     ].join("\n\n"),
   },
-  servers: [{ url: "http://localhost:3000", description: "Local development server" }],
+  servers: [{
+    url: configuredServerUrl || "/",
+    description: configuredServerUrl ? "Configured API server" : "Same origin as the API documentation",
+  }],
   tags: [
     { name: "Auth", description: "Registration, login, and account security." },
     { name: "Companies", description: "Company records; each has at most one Company Representative." },

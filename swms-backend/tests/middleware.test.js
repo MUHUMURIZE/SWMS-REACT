@@ -146,6 +146,23 @@ test("bin fill-level validation accepts 0-100 and rejects out-of-range values", 
   );
 });
 
+test("collection creation permits only pending or scheduled initial statuses", async () => {
+  const validBase = {
+    householdId: 1,
+    collectorId: 1,
+    scheduledAt: "2026-11-25T09:00:00Z",
+  };
+  for (const status of ["pending", "scheduled"]) {
+    await run(validateBody(schemas.collectionCreate), { body: { ...validBase, status } });
+  }
+  for (const status of ["in_progress", "collected", "completed", "missed", "cancelled"]) {
+    await assert.rejects(
+      run(validateBody(schemas.collectionCreate), { body: { ...validBase, status } }),
+      (error) => error.statusCode === 400 && error.code === "VALIDATION_ERROR"
+    );
+  }
+});
+
 test("missing routes return a structured 404 error", () => {
   let error;
   notFound({}, {}, (nextError) => { error = nextError; });

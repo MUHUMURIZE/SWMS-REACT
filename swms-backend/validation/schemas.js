@@ -12,6 +12,7 @@ const location = {
 
 exports.roles = roles;
 exports.statuses = statuses;
+exports.initialCollectionStatuses = ["pending", "scheduled"];
 exports.login = {
   email: { type: "email", required: true, maxLength: 254 },
   password: { type: "password", required: true },
@@ -96,7 +97,7 @@ exports.collectionCreate = {
   householdId: id(true),
   collectorId: id(true),
   scheduledAt: { type: "datetime", required: true },
-  status: { type: "enum", values: statuses },
+  status: { type: "enum", values: exports.initialCollectionStatuses },
   notes: text(false, 5000),
 };
 exports.collectionUpdate = {

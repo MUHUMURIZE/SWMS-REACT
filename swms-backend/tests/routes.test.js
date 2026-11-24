@@ -24,7 +24,7 @@ function request(server, path, method = "GET", body, headers = {}) {
         res.on("data", (chunk) => chunks.push(chunk));
         res.on("end", () => {
           const text = Buffer.concat(chunks).toString();
-          resolve({ status: res.statusCode, body: text ? JSON.parse(text) : null });
+          resolve({ status: res.statusCode, body: text ? JSON.parse(text) : null, headers: res.headers });
         });
       }
     );
@@ -58,6 +58,13 @@ test("API routes return structured auth, validation, and not-found responses", a
   const missingRoute = await request(server, "/not-an-api-route");
   assert.equal(missingRoute.status, 404);
   assert.equal(missingRoute.body.error.code, "NOT_FOUND");
+
+  const allowedOrigin = (process.env.CORS_ORIGINS || "http://localhost:5173").split(",")[0].trim();
+  const corsResponse = await request(server, "/api/auth/login", "OPTIONS", undefined, {
+    origin: allowedOrigin,
+    "access-control-request-method": "POST",
+  });
+  assert.match(corsResponse.headers["access-control-expose-headers"], /content-disposition/i);
 
   const swaggerUi = await fetch(`http://127.0.0.1:${server.address().port}/api-docs/`);
   assert.equal(swaggerUi.status, 200);

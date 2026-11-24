@@ -1,5 +1,8 @@
 const { pool } = require("../config/db");
 const runTransaction = require("../utils/transaction");
+const binModel = require("./binModel");
+const auditModel = require("./auditModel");
+const notificationService = require("../services/notificationService");
 
 async function addHouseholdNotification(client, householdId, title, message) {
   const users = await client.query("SELECT user_id FROM households WHERE id = $1", [householdId]);
@@ -73,82 +76,95 @@ exports.create = async ({ householdId, collectorId, scheduledAt, status, notes, 
   return exports.findById(id);
 };
 
-exports.update = async (id, { scheduledAt, status, notes }) => {
-  await runTransaction(async (client) => {
-    const current = await client.query(
-      `SELECT status, household_id AS "householdId", scheduled_at AS "scheduledAt",
-        original_scheduled_at AS "originalScheduledAt"
+async function updateCollection(id, { scheduledAt, status, notes }, audit) {
+  const updatedId = await runTransaction(async (client) => {
+    const result = await client.query(
+      `SELECT status, household_id AS "householdId", scheduled_at AS "scheduledAt", notes
        FROM collections WHERE id = $1 FOR UPDATE`,
       [id]
     );
-    if (!current.rows[0]) return;
-    await client.query(
-      `UPDATE collections SET
-        scheduled_at = COALESCE($1, scheduled_at),
-        status = COALESCE($2, status),
-        notes = COALESCE($3, notes),
-        original_scheduled_at = CASE
-          WHEN $1::timestamptz IS NOT NULL AND $1::timestamptz IS DISTINCT FROM scheduled_at
-          THEN COALESCE(original_scheduled_at, scheduled_at)
-          ELSE original_scheduled_at
-        END,
-        rescheduled_at = CASE
-          WHEN $1::timestamptz IS NOT NULL AND $1::timestamptz IS DISTINCT FROM scheduled_at
-          THEN CURRENT_TIMESTAMP
-          ELSE rescheduled_at
-        END,
-        collected_at = CASE
-          WHEN $4::text IN ('collected', 'completed') THEN COALESCE(collected_at, CURRENT_TIMESTAMP)
-          ELSE collected_at
-        END
-       WHERE id = $5`,
-      [
-        scheduledAt === undefined ? null : scheduledAt,
-        status === undefined ? null : status,
-        notes === undefined ? null : notes,
-        status || "",
-        id,
-      ]
-    );
-    if (status && status !== current.rows[0].status) {
-      await addHouseholdNotification(
-        client,
-        current.rows[0].householdId,
-        "Collection status updated",
-        `Your collection status is now "${status}".`
-      );
-    }
-  });
-  return exports.findById(id);
-};
+    const current = result.rows[0];
+    if (!current) return null;
 
-exports.updateStatus = async (id, status) => {
-  await runTransaction(async (client) => {
-    const current = await client.query(
-      "SELECT status, household_id AS \"householdId\" FROM collections WHERE id = $1 FOR UPDATE",
-      [id]
-    );
-    if (!current.rows[0]) return;
-    await client.query(
-      `UPDATE collections SET status = $1,
-        collected_at = CASE
-          WHEN $2 IN ('collected', 'completed') THEN COALESCE(collected_at, CURRENT_TIMESTAMP)
-          ELSE collected_at
-        END
-       WHERE id = $3`,
-      [status, status, id]
-    );
-    if (status !== current.rows[0].status) {
-      await addHouseholdNotification(
-        client,
-        current.rows[0].householdId,
-        "Collection status updated",
-        `Your collection status is now "${status}".`
+    const nextStatus = status === undefined ? current.status : status;
+    const statusChanged = nextStatus !== current.status;
+    const scheduleChanged = scheduledAt !== undefined
+      && new Date(scheduledAt).getTime() !== new Date(current.scheduledAt).getTime();
+    const notesChanged = notes !== undefined && notes !== current.notes;
+
+    if (statusChanged || scheduleChanged || notesChanged) {
+      await client.query(
+        `UPDATE collections SET
+          scheduled_at = COALESCE($1, scheduled_at),
+          status = COALESCE($2, status),
+          notes = COALESCE($3, notes),
+          original_scheduled_at = CASE
+            WHEN $1::timestamptz IS NOT NULL AND $1::timestamptz IS DISTINCT FROM scheduled_at
+            THEN COALESCE(original_scheduled_at, scheduled_at)
+            ELSE original_scheduled_at
+          END,
+          rescheduled_at = CASE
+            WHEN $1::timestamptz IS NOT NULL AND $1::timestamptz IS DISTINCT FROM scheduled_at
+            THEN CURRENT_TIMESTAMP
+            ELSE rescheduled_at
+          END,
+          collected_at = CASE
+            WHEN $4::text IN ('collected', 'completed') THEN COALESCE(collected_at, CURRENT_TIMESTAMP)
+            ELSE collected_at
+          END
+         WHERE id = $5`,
+        [
+          scheduledAt === undefined ? null : scheduledAt,
+          status === undefined ? null : status,
+          notes === undefined ? null : notes,
+          status || "",
+          id,
+        ]
       );
     }
+
+    if (statusChanged) {
+      await addHouseholdNotification(
+        client,
+        current.householdId,
+        "Collection status updated",
+        `Your collection status is now "${nextStatus}".`
+      );
+    }
+
+    if (statusChanged && nextStatus === "completed") {
+      const bin = await client.query(
+        "SELECT id FROM waste_bins WHERE household_id = $1 FOR UPDATE",
+        [current.householdId]
+      );
+      if (!bin.rows[0]) {
+        const error = new Error("The household's waste bin is unavailable.");
+        error.statusCode = 409;
+        error.code = "CONFLICT";
+        throw error;
+      }
+      await binModel.empty(bin.rows[0].id, client);
+      await notificationService.notifyCollectionCompleted(current.householdId, id, client);
+    }
+
+    const repeatedCompletion = current.status === "completed"
+      && nextStatus === "completed"
+      && !scheduleChanged
+      && !notesChanged;
+    if (audit && !repeatedCompletion) {
+      await auditModel.record({
+        ...audit,
+        resourceType: "COLLECTION",
+        resourceId: id,
+      }, client);
+    }
+    return id;
   });
-  return exports.findById(id);
-};
+  return updatedId === null ? null : exports.findById(updatedId);
+}
+
+exports.update = (id, changes, audit) => updateCollection(id, changes, audit);
+exports.updateStatus = (id, status, audit) => updateCollection(id, { status }, audit);
 
 exports.remove = async (id) => {
   const result = await pool.query("DELETE FROM collections WHERE id = $1", [id]);

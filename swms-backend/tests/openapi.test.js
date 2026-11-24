@@ -171,3 +171,68 @@ test("export OpenAPI uses resource and format string enums with file responses",
   );
   assert.match(operation.description, /Collector: manages assigned households/);
 });
+
+test("OpenAPI documents scheduling pagination and realistic workflow examples", () => {
+  for (const mode of ["upcoming", "missed", "overdue", "rescheduled"]) {
+    const operation = swaggerSpec.paths[`/api/collections/scheduling/${mode}`].get;
+    const parameters = Object.fromEntries(operation.parameters.map((parameter) => [parameter.name, parameter]));
+    assert.equal(parameters.limit.schema.default, 50);
+    assert.equal(parameters.limit.schema.maximum, 200);
+    assert.equal(parameters.offset.schema.default, 0);
+    const example = operation.responses["200"].content["application/json"].example.data[0];
+    assert.equal(typeof example.householdId, "number");
+    assert.equal(typeof example.collectorId, "number");
+    assert.equal(example.status, {
+      upcoming: "scheduled",
+      missed: "missed",
+      overdue: "pending",
+      rescheduled: "scheduled",
+    }[mode]);
+  }
+
+  const report = swaggerSpec.paths["/api/reports/district"].get
+    .responses["200"].content["application/json"].example.data;
+  assert.equal(typeof report.totalHouseholds, "number");
+  assert.equal(typeof report.collectionsCompleted, "number");
+
+  const completion = swaggerSpec.paths["/api/collections/{id}/status"].put
+    .responses["200"].content["application/json"].example.data;
+  assert.equal(completion.status, "completed");
+  assert.equal(typeof completion.householdName, "string");
+});
+
+test("OpenAPI examples match collection and profile response shapes", () => {
+  const collectionCreate = swaggerSpec.paths["/api/collections"].post;
+  assert.deepEqual(
+    collectionCreate.requestBody.content["application/json"].schema.properties.status.enum,
+    ["pending", "scheduled"]
+  );
+  assert.match(collectionCreate.description, /start only as pending or scheduled/);
+
+  const collectionList = swaggerSpec.paths["/api/collections"].get
+    .responses["200"].content["application/json"].example.data;
+  const collectionDetail = swaggerSpec.paths["/api/collections/{id}"].get
+    .responses["200"].content["application/json"].example.data;
+  assert.ok(Array.isArray(collectionList));
+  assert.equal(Array.isArray(collectionDetail), false);
+
+  const profileUpdate = swaggerSpec.paths["/api/auth/profile"].put
+    .responses["200"].content["application/json"].example.data;
+  assert.ok(profileUpdate.user);
+  assert.equal("profile" in profileUpdate, false);
+});
+
+test("OpenAPI server URL can be configured from the environment", () => {
+  const modulePath = require.resolve("../docs/openapi");
+  const originalUrl = process.env.API_SERVER_URL;
+  process.env.API_SERVER_URL = "https://api.example.test";
+  delete require.cache[modulePath];
+  try {
+    assert.equal(require("../docs/openapi").servers[0].url, "https://api.example.test");
+  } finally {
+    if (originalUrl === undefined) delete process.env.API_SERVER_URL;
+    else process.env.API_SERVER_URL = originalUrl;
+    delete require.cache[modulePath];
+    require("../docs/openapi");
+  }
+});
