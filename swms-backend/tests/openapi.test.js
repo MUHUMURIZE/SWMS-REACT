@@ -151,3 +151,23 @@ test("generated OpenAPI has valid paths and no escaped HTML or markup artifacts"
     }
   }
 });
+
+test("export OpenAPI uses resource and format string enums with file responses", () => {
+  const operation = swaggerSpec.paths["/api/exports/{resource}/{format}"].get;
+  const parameters = Object.fromEntries(operation.parameters.map((parameter) => [parameter.name, parameter]));
+  assert.equal(parameters.resource.schema.type, "string");
+  assert.deepEqual(parameters.resource.schema.enum, [
+    "companies", "collectors", "households", "bins", "collections",
+  ]);
+  assert.equal(parameters.format.schema.type, "string");
+  assert.deepEqual(parameters.format.schema.enum, ["csv", "xlsx", "pdf"]);
+  assert.deepEqual(
+    Object.keys(operation.responses["200"].content).sort(),
+    [
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "text/csv",
+    ].sort()
+  );
+  assert.match(operation.description, /Collector: manages assigned households/);
+});

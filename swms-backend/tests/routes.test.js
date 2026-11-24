@@ -1,9 +1,12 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const http = require("node:http");
+const jwt = require("jsonwebtoken");
+const { randomUUID } = require("node:crypto");
+const { pool } = require("../config/db");
 const app = require("../server");
 
-function request(server, path, method = "GET", body) {
+function request(server, path, method = "GET", body, headers = {}) {
   return new Promise((resolve, reject) => {
     const payload = body === undefined ? null : Buffer.from(JSON.stringify(body));
     const req = http.request(
@@ -13,8 +16,8 @@ function request(server, path, method = "GET", body) {
         path,
         method,
         headers: payload
-          ? { "content-type": "application/json", "content-length": payload.length }
-          : {},
+          ? { "content-type": "application/json", "content-length": payload.length, ...headers }
+          : headers,
       },
       (res) => {
         const chunks = [];
@@ -63,4 +66,46 @@ test("API routes return structured auth, validation, and not-found responses", a
   assert.equal(swaggerDocument.status, 200);
   assert.equal(swaggerDocument.body.openapi, "3.0.3");
   assert.ok(swaggerDocument.body.paths["/api/companies"]);
+});
+
+test("scheduling endpoints remain reachable through the shared collections mount", async (t) => {
+  const originalSecret = process.env.JWT_SECRET;
+  process.env.JWT_SECRET = "test-only-signing-secret-with-32-chars";
+  t.after(() => {
+    if (originalSecret === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = originalSecret;
+  });
+
+  t.mock.method(pool, "query", async (query) => {
+    if (query.includes("FROM users u")) {
+      return { rows: [{ id: 1, role: "ADMIN", token_version: 0 }] };
+    }
+    return { rows: [] };
+  });
+
+  const token = jwt.sign(
+    { id: 1, role: "ADMIN", tokenVersion: 0, jti: randomUUID() },
+    process.env.JWT_SECRET,
+    {
+      algorithm: "HS256",
+      issuer: process.env.JWT_ISSUER || "swms-api",
+      audience: process.env.JWT_AUDIENCE || "swms-api",
+      expiresIn: "5m",
+    }
+  );
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((resolve) => server.once("listening", resolve));
+  t.after(() => new Promise((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  }));
+
+  const result = await request(
+    server,
+    "/api/collections/scheduling/upcoming",
+    "GET",
+    undefined,
+    { authorization: `Bearer ${token}` }
+  );
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.data, []);
 });

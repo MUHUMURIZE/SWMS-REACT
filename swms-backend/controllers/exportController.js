@@ -55,8 +55,10 @@ const allowedResources = {
 };
 
 async function getScopedRows(req, resource) {
+  if (!Object.hasOwn(allowedResources, resource)) {
+    throw new AppError(404, "Export resource not found.", "NOT_FOUND");
+  }
   const definition = allowedResources[resource];
-  if (!definition) throw new AppError(404, "Export resource not found.", "NOT_FOUND");
   if (req.user.role === "HOUSEHOLD") {
     throw new AppError(403, "Households cannot export system resources.");
   }
@@ -143,8 +145,10 @@ async function exportData(req, res) {
   if (!["csv", "xlsx", "pdf"].includes(format)) {
     throw new AppError(400, "format must be csv, xlsx, or pdf.", "VALIDATION_ERROR");
   }
+  if (!Object.hasOwn(allowedResources, resource)) {
+    throw new AppError(404, "Export resource not found.", "NOT_FOUND");
+  }
   const definition = allowedResources[resource];
-  if (!definition) throw new AppError(404, "Export resource not found.", "NOT_FOUND");
   const rows = await getScopedRows(req, resource);
   await auditModel.record({
     actorUserId: req.user.id,

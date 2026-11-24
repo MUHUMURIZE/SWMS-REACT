@@ -10,6 +10,8 @@ const {
   authorizeBinReader,
   authorizeBinManager,
   authorizeHousehold,
+  authorizeAdminOrRepresentative,
+  authorizeExportReader,
 } = require("../middleware/authorization");
 const { notFound, errorHandler } = require("../middleware/errorMiddleware");
 const schemas = require("../validation/schemas");
@@ -112,6 +114,20 @@ test("bin role guards preserve collector, representative, admin, and household b
   );
   await assert.rejects(
     run(authorizeBinManager, { user: { role: "HOUSEHOLD" } }),
+    (error) => error.statusCode === 403
+  );
+});
+
+test("collector reports remain management-scoped while export access respects collector ownership", async () => {
+  await run(authorizeAdminOrRepresentative, { user: { role: "ADMIN" } });
+  await run(authorizeAdminOrRepresentative, { user: { role: "COMPANY_REPRESENTATIVE" } });
+  await assert.rejects(
+    run(authorizeAdminOrRepresentative, { user: { role: "COLLECTOR" } }),
+    (error) => error.statusCode === 403
+  );
+  await run(authorizeExportReader, { user: { role: "COLLECTOR" } });
+  await assert.rejects(
+    run(authorizeExportReader, { user: { role: "HOUSEHOLD" } }),
     (error) => error.statusCode === 403
   );
 });

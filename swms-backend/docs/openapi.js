@@ -38,6 +38,7 @@ const guardRoles = {
   authorizeBinManager: ["ADMIN", "COLLECTOR"],
   authorizeCollectionManager: ["ADMIN", "COMPANY_REPRESENTATIVE", "COLLECTOR"],
   authorizeCollectionDeleter: ["ADMIN", "COMPANY_REPRESENTATIVE"],
+  authorizeExportReader: ["ADMIN", "COMPANY_REPRESENTATIVE", "COLLECTOR"],
 };
 
 const bodyExamples = {
@@ -430,6 +431,18 @@ function exampleForSuccess(method, routePath) {
 
 function successResponse(method, routePath) {
   if (method === "delete") return { description: "Resource deleted successfully; no response body." };
+  if (routePath === "/api/exports/{resource}/{format}") {
+    return {
+      description: "The requested resource export file.",
+      content: {
+        "text/csv": { schema: { type: "string", format: "binary" } },
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+          schema: { type: "string", format: "binary" },
+        },
+        "application/pdf": { schema: { type: "string", format: "binary" } },
+      },
+    };
+  }
   const status = method === "post" && !routePath.endsWith("/login") && !routePath.endsWith("/logout")
     ? "201"
     : "200";
@@ -493,14 +506,39 @@ function generatePaths() {
         .split("/")
         .filter(Boolean)
         .join("_") || "root"}`;
-      const pathParameters = [...openApiPath.matchAll(/\{([^}]+)\}/g)].map((match) => ({
-        name: match[1],
-        in: "path",
-        required: true,
-        description: `${match[1]} resource identifier.`,
-        schema: { type: "integer", minimum: 1 },
-        example: 1,
-      }));
+      const pathParameters = [...openApiPath.matchAll(/\{([^}]+)\}/g)].map((match) => {
+        if (openApiPath === "/api/exports/{resource}/{format}" && match[1] === "resource") {
+          return {
+            name: "resource",
+            in: "path",
+            required: true,
+            description: "Resource to export.",
+            schema: {
+              type: "string",
+              enum: ["companies", "collectors", "households", "bins", "collections"],
+            },
+            example: "collections",
+          };
+        }
+        if (openApiPath === "/api/exports/{resource}/{format}" && match[1] === "format") {
+          return {
+            name: "format",
+            in: "path",
+            required: true,
+            description: "Export file format.",
+            schema: { type: "string", enum: ["csv", "xlsx", "pdf"] },
+            example: "csv",
+          };
+        }
+        return {
+          name: match[1],
+          in: "path",
+          required: true,
+          description: `${match[1]} resource identifier.`,
+          schema: { type: "integer", minimum: 1 },
+          example: 1,
+        };
+      });
       const requestSchema = getRequestSchema(routeCode, routePath);
       const example = bodyExamples[key];
       const summary = summaries[key] || defaultSummary(method, routeFile.tag, openApiPath);
@@ -541,6 +579,39 @@ function generatePaths() {
               schema: { type: "integer", minimum: 0, default: 0 },
             },
           ],
+        } : {}),
+        ...(method === "get" && openApiPath === "/api/reports/collector" ? {
+          parameters: [{
+            name: "collectorId",
+            in: "query",
+            required: true,
+            schema: { type: "integer", minimum: 1 },
+          }],
+        } : {}),
+        ...(method === "get" && openApiPath === "/api/reports/company" ? {
+          parameters: [{
+            name: "companyId",
+            in: "query",
+            required: false,
+            schema: { type: "integer", minimum: 1 },
+            description: "Required for administrators; representatives are scoped to their own company.",
+          }],
+        } : {}),
+        ...(method === "get" && openApiPath === "/api/reports/district" ? {
+          parameters: [{
+            name: "district",
+            in: "query",
+            required: false,
+            schema: { type: "string", maxLength: 160 },
+          }],
+        } : {}),
+        ...(method === "get" && openApiPath === "/api/reports/sector" ? {
+          parameters: [{
+            name: "sector",
+            in: "query",
+            required: false,
+            schema: { type: "string", maxLength: 160 },
+          }],
         } : {}),
         ...(requestSchema ? {
           requestBody: {
