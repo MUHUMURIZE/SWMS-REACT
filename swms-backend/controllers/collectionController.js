@@ -3,6 +3,8 @@ const collectionModel = require("../models/collectionModel");
 const householdModel = require("../models/householdModel");
 const AppError = require("../utils/AppError");
 const auditModel = require("../models/auditModel");
+const notificationService = require("../services/notificationService");
+const binModel = require("../models/binModel");
 
 async function getCurrentProfileId(table, userId) {
   const result = await pool.query(`SELECT id FROM ${table} WHERE user_id = $1`, [userId]);
@@ -107,6 +109,13 @@ exports.update = async (req, res) => {
     throw new AppError(400, "Collection household and collector assignments cannot be changed.");
   }
   const updated = await collectionModel.update(req.params.id, req.body);
+  if (req.body.status === "completed") {
+    const bin = await binModel.findByHouseholdId(collection.householdId);
+    if (bin) {
+      await binModel.empty(bin.id);
+      await notificationService.notifyCollectionCompleted(collection.householdId, collection.id);
+    }
+  }
   await auditModel.record({
     actorUserId: req.user.id,
     action: "COLLECTION_UPDATED",
@@ -126,6 +135,13 @@ exports.updateStatus = async (req, res) => {
     throw new AppError(403, "Households cannot update collection status.");
   }
   const updated = await collectionModel.updateStatus(req.params.id, req.body.status);
+  if (req.body.status === "completed") {
+    const bin = await binModel.findByHouseholdId(collection.householdId);
+    if (bin) {
+      await binModel.empty(bin.id);
+      await notificationService.notifyCollectionCompleted(collection.householdId, collection.id);
+    }
+  }
   await auditModel.record({
     actorUserId: req.user.id,
     action: "COLLECTION_STATUS_UPDATED",

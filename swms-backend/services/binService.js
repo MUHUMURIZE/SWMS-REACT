@@ -2,6 +2,8 @@ const { pool } = require("../config/db");
 const householdModel = require("../models/householdModel");
 const binModel = require("../models/binModel");
 const AppError = require("../utils/AppError");
+const notificationModel = require("../models/notificationModel");
+const notificationService = require("./notificationService");
 
 async function collectorIdFor(userId) {
   const result = await pool.query("SELECT id FROM collectors WHERE user_id = $1", [userId]);
@@ -106,8 +108,15 @@ exports.remove = async (user, id) => {
 };
 
 exports.updateProgress = async (user, id, fillLevel) => {
-  await accessibleBin(user, id);
-  return binModel.updateProgress(id, fillLevel, statusFor(fillLevel));
+  const bin = await accessibleBin(user, id);
+  const updated = await binModel.updateProgress(id, fillLevel, statusFor(fillLevel));
+  const crossedWarning = bin.fillLevel < 80 && fillLevel >= 80;
+  const crossedHigh = bin.fillLevel < 90 && fillLevel >= 90;
+  const crossedFull = bin.fillLevel < 100 && fillLevel >= 100;
+  if (crossedFull) await notificationService.notifyBinFillLevel(updated, 100);
+  else if (crossedHigh) await notificationService.notifyBinFillLevel(updated, 90);
+  else if (crossedWarning) await notificationService.notifyBinFillLevel(updated, 80);
+  return updated;
 };
 
 exports.empty = async (user, id) => {

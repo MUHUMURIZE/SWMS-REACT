@@ -14,6 +14,9 @@ const routeFiles = [
   { file: "notificationRoutes.js", prefix: "/api/notifications", tag: "Notifications" },
   { file: "dashboardRoutes.js", prefix: "/api/dashboard", tag: "Dashboards" },
   { file: "selfRoutes.js", prefix: "/api", tag: "Self Service" },
+  { file: "reportRoutes.js", prefix: "/api/reports", tag: "Reports" },
+  { file: "schedulingRoutes.js", prefix: "/api/collections/scheduling", tag: "Scheduling" },
+  { file: "exportRoutes.js", prefix: "/api/exports", tag: "Exports" },
 ];
 
 const roleDescriptions = {
@@ -612,6 +615,9 @@ const definition = {
     { name: "Dashboards", description: "Role-specific dashboard summaries." },
     { name: "Self Service", description: "Household self-service profile and progress." },
     { name: "Health", description: "API health check." },
+    { name: "Reports", description: "Role-scoped operational waste management reports." },
+    { name: "Scheduling", description: "Upcoming, missed, overdue, and rescheduled collections." },
+    { name: "Exports", description: "CSV, Excel, and PDF data exports." },
   ],
   paths: generatePaths(),
   components: {

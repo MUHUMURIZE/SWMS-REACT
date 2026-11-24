@@ -18,3 +18,4 @@ exports.authorizeBinReader = allowRoles("ADMIN", "COMPANY_REPRESENTATIVE", "COLL
 exports.authorizeBinManager = allowRoles("ADMIN", "COLLECTOR");
 exports.authorizeCollectionManager = allowRoles("ADMIN", "COMPANY_REPRESENTATIVE", "COLLECTOR");
 exports.authorizeCollectionDeleter = allowRoles("ADMIN", "COMPANY_REPRESENTATIVE");
+exports.authorizeExportReader = allowRoles("ADMIN", "COMPANY_REPRESENTATIVE", "COLLECTOR");

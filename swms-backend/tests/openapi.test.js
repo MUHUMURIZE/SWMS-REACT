@@ -22,6 +22,9 @@ test("OpenAPI includes every route declared in the backend route files", () => {
       notificationRoutes: "/api/notifications",
       dashboardRoutes: "/api/dashboard",
       selfRoutes: "/api",
+      reportRoutes: "/api/reports",
+      schedulingRoutes: "/api/collections/scheduling",
+      exportRoutes: "/api/exports",
     }[file.replace(".js", "")];
     for (const [, method, suffix] of source.matchAll(
       /router\.(get|post|put|patch|delete)\s*\(\s*["']([^"']+)["']/g

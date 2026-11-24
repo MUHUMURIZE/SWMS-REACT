@@ -12,6 +12,7 @@ async function addHouseholdNotification(client, householdId, title, message) {
 
 const selection = `SELECT cl.id, cl.household_id AS "householdId",
   cl.collector_id AS "collectorId", cl.scheduled_at AS "scheduledAt", cl.status,
+  cl.original_scheduled_at AS "originalScheduledAt", cl.rescheduled_at AS "rescheduledAt",
   cl.notes, cl.collected_at AS "collectedAt", cl.created_by AS "createdBy",
   cl.created_at AS "createdAt", cl.updated_at AS "updatedAt",
   hu.full_name AS "householdName", cu.full_name AS "collectorName",
@@ -75,7 +76,8 @@ exports.create = async ({ householdId, collectorId, scheduledAt, status, notes, 
 exports.update = async (id, { scheduledAt, status, notes }) => {
   await runTransaction(async (client) => {
     const current = await client.query(
-      `SELECT status, household_id AS "householdId"
+      `SELECT status, household_id AS "householdId", scheduled_at AS "scheduledAt",
+        original_scheduled_at AS "originalScheduledAt"
        FROM collections WHERE id = $1 FOR UPDATE`,
       [id]
     );
@@ -85,6 +87,16 @@ exports.update = async (id, { scheduledAt, status, notes }) => {
         scheduled_at = COALESCE($1, scheduled_at),
         status = COALESCE($2, status),
         notes = COALESCE($3, notes),
+        original_scheduled_at = CASE
+          WHEN $1::timestamptz IS NOT NULL AND $1::timestamptz IS DISTINCT FROM scheduled_at
+          THEN COALESCE(original_scheduled_at, scheduled_at)
+          ELSE original_scheduled_at
+        END,
+        rescheduled_at = CASE
+          WHEN $1::timestamptz IS NOT NULL AND $1::timestamptz IS DISTINCT FROM scheduled_at
+          THEN CURRENT_TIMESTAMP
+          ELSE rescheduled_at
+        END,
         collected_at = CASE
           WHEN $4::text IN ('collected', 'completed') THEN COALESCE(collected_at, CURRENT_TIMESTAMP)
           ELSE collected_at
@@ -176,4 +188,43 @@ exports.getCurrentForHousehold = async (householdId) => {
     [householdId]
   );
   return result.rows[0] || null;
+};
+
+exports.listScheduling = async ({ role, userId, pagination }, mode) => {
+  let scope = "";
+  let values = [];
+  if (role === "HOUSEHOLD") {
+    scope = " AND h.user_id = $1";
+    values.push(userId);
+  } else if (role === "COLLECTOR") {
+    scope = " AND c.user_id = $1";
+    values.push(userId);
+  } else if (role === "COMPANY_REPRESENTATIVE") {
+    scope = " AND rep.user_id = $1";
+    values.push(userId);
+  }
+
+  let predicate = "";
+  if (mode === "upcoming") {
+    predicate = " AND cl.status IN ('pending','scheduled') AND cl.scheduled_at >= CURRENT_TIMESTAMP";
+  } else if (mode === "missed") {
+    predicate = " AND cl.status = 'missed'";
+  } else if (mode === "overdue") {
+    predicate = " AND cl.status IN ('pending','scheduled') AND cl.scheduled_at < CURRENT_TIMESTAMP";
+  } else if (mode === "rescheduled") {
+    predicate = " AND cl.rescheduled_at IS NOT NULL";
+  } else {
+    return [];
+  }
+
+  const limitIndex = values.length + 1;
+  const offsetIndex = values.length + 2;
+  values.push(pagination.limit, pagination.offset);
+  const result = await pool.query(
+    `${selection} WHERE 1=1${scope}${predicate}
+     ORDER BY cl.scheduled_at ASC, cl.id DESC
+     LIMIT $${limitIndex} OFFSET $${offsetIndex}`,
+    values
+  );
+  return result.rows;
 };

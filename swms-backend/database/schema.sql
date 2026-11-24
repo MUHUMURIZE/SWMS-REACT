@@ -134,6 +134,8 @@ CREATE TABLE IF NOT EXISTS collections (
   status collection_status NOT NULL DEFAULT 'pending',
   notes TEXT,
   collected_at TIMESTAMPTZ,
+  original_scheduled_at TIMESTAMPTZ,
+  rescheduled_at TIMESTAMPTZ,
   created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -148,11 +150,17 @@ CREATE TABLE IF NOT EXISTS notifications (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title VARCHAR(160) NOT NULL,
   message TEXT NOT NULL,
+  category VARCHAR(64),
+  priority VARCHAR(16) NOT NULL DEFAULT 'normal',
+  resource_type VARCHAR(64),
+  resource_id VARCHAR(128),
   read_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications (user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_notifications_category ON notifications (category);
+CREATE INDEX IF NOT EXISTS idx_notifications_priority ON notifications (priority);
 
 CREATE TABLE IF NOT EXISTS audit_logs (
   id BIGSERIAL PRIMARY KEY,
@@ -240,6 +248,32 @@ CREATE INDEX IF NOT EXISTS idx_waste_bins_status ON waste_bins (status);
 DROP TRIGGER IF EXISTS waste_bins_set_updated_at ON waste_bins;
 CREATE TRIGGER waste_bins_set_updated_at BEFORE UPDATE ON waste_bins
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TABLE IF NOT EXISTS bin_fill_history (
+  id BIGSERIAL PRIMARY KEY,
+  bin_id INTEGER NOT NULL REFERENCES waste_bins(id) ON DELETE CASCADE,
+  fill_level INTEGER NOT NULL CHECK (fill_level BETWEEN 0 AND 100),
+  status bin_status NOT NULL,
+  recorded_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_bin_fill_history_bin_time ON bin_fill_history (bin_id, recorded_at DESC);
+
+CREATE OR REPLACE FUNCTION record_bin_fill_history()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'INSERT' OR NEW.fill_level IS DISTINCT FROM OLD.fill_level THEN
+    INSERT INTO bin_fill_history (bin_id, fill_level, status)
+    VALUES (NEW.id, NEW.fill_level, NEW.status);
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS waste_bins_record_fill_history ON waste_bins;
+CREATE TRIGGER waste_bins_record_fill_history
+AFTER INSERT OR UPDATE OF fill_level, status ON waste_bins
+FOR EACH ROW EXECUTE FUNCTION record_bin_fill_history();
 
 CREATE OR REPLACE FUNCTION enforce_household_has_waste_bin()
 RETURNS TRIGGER AS $$
