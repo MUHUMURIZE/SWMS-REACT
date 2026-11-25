@@ -35,6 +35,8 @@ export interface Company {
   sector?: string
   cell?: string
   village?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface District {
@@ -69,6 +71,7 @@ export interface Representative {
   sector?: string
   cell?: string
   village?: string
+  companyName?: string
 }
 
 export interface Collector {
@@ -81,6 +84,8 @@ export interface Collector {
   sector?: string
   cell?: string
   village?: string
+  companyId?: number
+  representativeName?: string
 }
 
 export type VehicleStatus = 'AVAILABLE' | 'IN_SERVICE' | 'MAINTENANCE' | 'INACTIVE'
@@ -142,6 +147,8 @@ export interface Household {
   sector?: string
   cell?: string
   village?: string
+  collectorName?: string
+  companyId?: number
 }
 
 export interface Bin {
@@ -151,6 +158,10 @@ export interface Bin {
   capacity: number
   fillLevel: number
   status: 'EMPTY' | 'LOW' | 'MEDIUM' | 'HIGH' | 'FULL' | 'MAINTENANCE'
+  householdName?: string
+  collectorId?: number
+  companyId?: number
+  district?: string
 }
 
 export type CollectionStatus =
@@ -171,6 +182,10 @@ export interface Collection {
   notes?: string
   collectedAt?: string
   rescheduledAt?: string
+  originalScheduledAt?: string
+  householdName?: string
+  collectorName?: string
+  district?: string
 }
 
 export interface Notification {

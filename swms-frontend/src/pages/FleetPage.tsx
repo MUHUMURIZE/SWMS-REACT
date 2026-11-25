@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Search, Truck } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { EmptyState, ErrorState, LoadingState } from '../components/PageState'
+import { Card, PageHeader, StatusBadge } from '../components/ui'
 import {
   collectorService,
   companyService,
@@ -18,7 +20,7 @@ import type {
 } from '../types/api'
 
 const pageSize = 50
-const inputClass = 'mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm'
+const inputClass = 'app-input mt-1'
 const fuelTypes: VehicleFuelType[] = ['DIESEL', 'PETROL', 'ELECTRIC', 'HYBRID', 'CNG', 'OTHER']
 
 interface VehicleForm {
@@ -109,6 +111,7 @@ export function FleetPage() {
   const [expandedVehicleId, setExpandedVehicleId] = useState<number | null>(null)
   const [collectorId, setCollectorId] = useState('')
   const [maintenanceForm, setMaintenanceForm] = useState<MaintenanceForm>(emptyMaintenanceForm)
+  const [search, setSearch] = useState('')
 
   const vehicles = useQuery({
     queryKey: ['vehicles', { limit: pageSize, offset }],
@@ -134,6 +137,21 @@ export function FleetPage() {
     queryFn: () => vehicleService.maintenance(expandedVehicleId!, { limit: 50, offset: 0 }),
     enabled: expandedVehicleId !== null,
   })
+  const filteredVehicles = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    if (!term) return vehicles.data || []
+    return (vehicles.data || []).filter((vehicle) => [
+      vehicle.registrationNumber,
+      vehicle.vehicleType,
+      vehicle.make,
+      vehicle.model,
+      vehicle.fuelType,
+      vehicle.status,
+      vehicle.assignedCollectorName,
+      vehicle.assignedCollectorDistrict,
+      String(vehicle.companyId),
+    ].some((value) => value?.toLowerCase().includes(term)))
+  }, [vehicles.data, search])
 
   const invalidateFleet = async (vehicleId?: number) => {
     await Promise.all([
@@ -256,12 +274,12 @@ export function FleetPage() {
 
   return (
     <div>
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-slate-900">Fleet Management</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Register company vehicles, manage authorized collector assignments, and keep service history.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Field operations"
+        title="Fleet management"
+        description="Register vehicles, manage authorized collector assignments, and keep maintenance history."
+        icon={Truck}
+      />
 
       {mutationErrors.map((error, index) => (
         <div className="mb-3" key={`${error.message}-${index}`}><ErrorState error={error} /></div>
@@ -269,7 +287,7 @@ export function FleetPage() {
       {loadError && <div className="mb-4"><ErrorState error={loadError} /></div>}
 
       {isManager && (
-        <form onSubmit={submitVehicle} className="mb-6 rounded-xl border border-slate-200 bg-white p-5">
+        <form onSubmit={submitVehicle} className="app-card mb-6 p-5 sm:p-6">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="text-lg font-semibold text-slate-900">
               {editingVehicle ? `Edit ${editingVehicle.registrationNumber}` : 'Register a vehicle'}
@@ -364,32 +382,47 @@ export function FleetPage() {
       )}
       {vehicles.data && vehicles.data.length > 0 && (
         <>
-          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+          <Card className="overflow-hidden">
+            <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-800">Registered vehicles</h2>
+                <p className="mt-1 text-xs text-slate-500">Showing records in your authorized scope.</p>
+              </div>
+              <label className="relative block w-full sm:max-w-xs">
+                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                <input type="search" value={search} onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Filter loaded vehicles" aria-label="Filter loaded vehicles"
+                  className="app-input h-10 pl-9" />
+              </label>
+            </div>
+            {filteredVehicles.length === 0 ? (
+              <div className="p-4"><EmptyState title="No matching vehicles" label="Try another search term or clear the filter." /></div>
+            ) : (
+            <div className="overflow-x-auto">
+            <table className="app-table min-w-[58rem]">
+              <thead>
                 <tr>
-                  {['Registration', 'Vehicle', 'Capacity', 'Fuel', 'Status', 'Collector', 'Actions'].map((column) => (
-                    <th key={column} className="px-4 py-3 font-medium">{column}</th>
+                  {['Registration', 'Vehicle', ...(isAdmin ? ['Company'] : []), 'Capacity', 'Fuel', 'Status', 'Collector', 'Actions'].map((column) => (
+                    <th key={column}>{column}</th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {vehicles.data.map((vehicle) => (
+              <tbody>
+                {filteredVehicles.map((vehicle) => (
                   <tr key={vehicle.id} className="align-top">
-                    <td className="px-4 py-3 font-medium text-slate-900">{vehicle.registrationNumber}</td>
-                    <td className="px-4 py-3">{[vehicle.make, vehicle.model, vehicle.vehicleType].filter(Boolean).join(' ')}</td>
-                    <td className="px-4 py-3">{vehicle.capacity}</td>
-                    <td className="px-4 py-3">{vehicle.fuelType}</td>
-                    <td className="px-4 py-3">
-                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs">{vehicle.status}</span>
-                    </td>
-                    <td className="px-4 py-3">
+                    <td className="font-semibold text-slate-900">{vehicle.registrationNumber}</td>
+                    <td>{[vehicle.make, vehicle.model, vehicle.vehicleType].filter(Boolean).join(' ')}</td>
+                    {isAdmin && <td>{companies.data?.find((company) => company.id === vehicle.companyId)?.name || `Company ${vehicle.companyId}`}</td>}
+                    <td>{vehicle.capacity}</td>
+                    <td>{vehicle.fuelType}</td>
+                    <td><StatusBadge status={vehicle.status} /></td>
+                    <td>
                       {vehicle.assignedCollectorName || 'Unassigned'}
                       {vehicle.assignedCollectorDistrict && (
                         <div className="mt-1 text-xs text-slate-500">{vehicle.assignedCollectorDistrict}</div>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td>
                       <div className="flex flex-wrap gap-2">
                         {isManager && (
                           <button type="button" onClick={() => beginEdit(vehicle)}
@@ -406,10 +439,12 @@ export function FleetPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+            )}
+          </Card>
 
-          {vehicles.data.map((vehicle) => expandedVehicleId === vehicle.id && (
-            <section key={`details-${vehicle.id}`} className="mt-4 rounded-xl border border-slate-200 bg-white p-5">
+          {filteredVehicles.map((vehicle) => expandedVehicleId === vehicle.id && (
+            <Card key={`details-${vehicle.id}`} className="mt-4 p-5 sm:p-6">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold text-slate-900">
                   {vehicle.registrationNumber} · Assignment and maintenance history
@@ -587,7 +622,7 @@ export function FleetPage() {
                   ))}
                 </div>
               </div>
-            </section>
+            </Card>
           ))}
           <div className="mt-4 flex justify-end gap-2">
             <button type="button" disabled={offset === 0} onClick={() => setOffset((value) => Math.max(0, value - pageSize))}

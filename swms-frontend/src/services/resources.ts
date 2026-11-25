@@ -22,6 +22,13 @@ const params = (pagination: Pagination) => ({
   offset: pagination.offset,
 })
 
+export interface LocationInput {
+  district?: string
+  sector?: string
+  cell?: string
+  village?: string
+}
+
 export const authService = {
   profile: async () => unwrap<{ user: User; profile: unknown }>(
     (await api.get('/api/auth/profile')).data,
@@ -42,6 +49,13 @@ export const dashboardService = {
 export const companyService = {
   list: async (pagination: Pagination) =>
     unwrap<Company[]>((await api.get('/api/companies', { params: params(pagination) })).data),
+  create: async (body: { name: string } & LocationInput) =>
+    unwrap<Company>((await api.post('/api/companies', body)).data),
+  update: async (id: number, body: { name?: string } & LocationInput) =>
+    unwrap<Company>((await api.put(`/api/companies/${id}`, body)).data),
+  remove: async (id: number) => unwrap<{ message: string }>(
+    (await api.delete(`/api/companies/${id}`)).data,
+  ),
 }
 
 export const districtService = {
@@ -68,11 +82,45 @@ export const districtService = {
 export const representativeService = {
   list: async (pagination: Pagination) =>
     unwrap<Representative[]>((await api.get('/api/representatives', { params: params(pagination) })).data),
+  create: async (body: {
+    fullName: string
+    email: string
+    password: string
+    phone?: string
+    companyId: number
+  } & LocationInput) =>
+    unwrap<Representative>((await api.post('/api/representatives', body)).data),
+  update: async (id: number, body: {
+    fullName?: string
+    phone?: string
+    companyId?: number
+  } & LocationInput) =>
+    unwrap<Representative>((await api.put(`/api/representatives/${id}`, body)).data),
+  remove: async (id: number) => unwrap<{ message: string }>(
+    (await api.delete(`/api/representatives/${id}`)).data,
+  ),
 }
 
 export const collectorService = {
   list: async (pagination: Pagination) =>
     unwrap<Collector[]>((await api.get('/api/collectors', { params: params(pagination) })).data),
+  create: async (body: {
+    fullName: string
+    email: string
+    password: string
+    phone?: string
+    representativeId?: number
+  } & LocationInput) =>
+    unwrap<Collector>((await api.post('/api/collectors', body)).data),
+  update: async (id: number, body: {
+    fullName?: string
+    phone?: string
+    representativeId?: number
+  } & LocationInput) =>
+    unwrap<Collector>((await api.put(`/api/collectors/${id}`, body)).data),
+  remove: async (id: number) => unwrap<{ message: string }>(
+    (await api.delete(`/api/collectors/${id}`)).data,
+  ),
 }
 
 export interface VehicleInput {
@@ -132,6 +180,26 @@ export const vehicleService = {
 export const householdService = {
   list: async (pagination: Pagination) =>
     unwrap<Household[]>((await api.get('/api/households', { params: params(pagination) })).data),
+  create: async (body: {
+    fullName: string
+    email: string
+    password: string
+    phone?: string
+    collectorId?: number
+    address: string
+    nationalId?: string
+  } & LocationInput) =>
+    unwrap<Household>((await api.post('/api/households', body)).data),
+  update: async (id: number, body: {
+    fullName?: string
+    phone?: string
+    address?: string
+    nationalId?: string
+  } & LocationInput) =>
+    unwrap<Household>((await api.put(`/api/households/${id}`, body)).data),
+  remove: async (id: number) => unwrap<{ message: string }>(
+    (await api.delete(`/api/households/${id}`)).data,
+  ),
   me: async () => unwrap<{ user: User; profile: Household }>((await api.get('/api/households/me')).data),
   updateMe: async (body: Partial<Household>) =>
     unwrap<{ user: User; profile: Household }>((await api.put('/api/households/me', body)).data),
@@ -140,6 +208,13 @@ export const householdService = {
 export const binService = {
   list: async (pagination: Pagination) =>
     unwrap<Bin[]>((await api.get('/api/bins', { params: params(pagination) })).data),
+  create: async (body: { householdId: number; binCode: string; capacity: number }) =>
+    unwrap<Bin>((await api.post('/api/bins', body)).data),
+  update: async (id: number, body: { binCode?: string; capacity?: number }) =>
+    unwrap<Bin>((await api.put(`/api/bins/${id}`, body)).data),
+  remove: async (id: number) => unwrap<{ message: string }>(
+    (await api.delete(`/api/bins/${id}`)).data,
+  ),
   full: async (pagination: Pagination) =>
     unwrap<Bin[]>((await api.get('/api/bins/full', { params: params(pagination) })).data),
   myBin: async () => unwrap<Bin>((await api.get('/api/my-bin')).data),
@@ -151,6 +226,23 @@ export const binService = {
 export const collectionService = {
   list: async (pagination: Pagination) =>
     unwrap<Collection[]>((await api.get('/api/collections', { params: params(pagination) })).data),
+  create: async (body: {
+    householdId: number
+    collectorId: number
+    scheduledAt: string
+    status?: 'pending' | 'scheduled'
+    notes?: string
+  }) =>
+    unwrap<Collection>((await api.post('/api/collections', body)).data),
+  update: async (id: number, body: {
+    scheduledAt?: string
+    status?: Collection['status']
+    notes?: string
+  }) =>
+    unwrap<Collection>((await api.put(`/api/collections/${id}`, body)).data),
+  remove: async (id: number) => unwrap<{ message: string }>(
+    (await api.delete(`/api/collections/${id}`)).data,
+  ),
   scheduling: async (kind: 'upcoming' | 'missed' | 'overdue' | 'rescheduled', pagination: Pagination) =>
     unwrap<Collection[]>(
       (await api.get(`/api/collections/scheduling/${kind}`, { params: params(pagination) })).data,

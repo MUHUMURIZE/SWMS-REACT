@@ -56,6 +56,8 @@ No role named `National Administrator` exists separately; the frontend should ma
 | `PUT` | `/api/auth/profile` | Authenticated | Optional `fullName`, `phone` |
 | `PUT` | `/api/auth/change-password` | Authenticated | Invalidates existing tokens |
 
+There is no unauthenticated password-recovery or reset endpoint and no recovery email flow. The frontend recovery page reports this limitation and does not claim to send a request.
+
 Login example:
 
 ```json

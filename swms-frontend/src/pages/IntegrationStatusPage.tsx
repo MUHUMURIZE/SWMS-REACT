@@ -1,3 +1,6 @@
+import { CircleHelp, Map, ShieldCheck } from 'lucide-react'
+import { Card, PageHeader } from '../components/ui'
+
 type IntegrationKind = 'gps' | 'devices' | 'support'
 
 const pageDetails: Record<IntegrationKind, {
@@ -44,34 +47,40 @@ const pageDetails: Record<IntegrationKind, {
 
 export function IntegrationStatusPage({ kind }: { kind: IntegrationKind }) {
   const details = pageDetails[kind]
+  const icon = kind === 'gps' ? Map : kind === 'devices' ? ShieldCheck : CircleHelp
 
   return (
     <div>
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-slate-900">{details.title}</h1>
-        <p className="mt-1 text-sm text-slate-500">{details.description}</p>
-      </header>
+      <PageHeader title={details.title} description={details.description} icon={icon} />
 
-      <section role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-5">
+      <Card role="status" className="border-amber-200 bg-amber-50 p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="font-semibold text-amber-950">Integration not configured</h2>
+            <h2 className="flex items-center gap-2 font-semibold text-amber-950">
+              <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden="true" />
+              Integration not configured
+            </h2>
             <p className="mt-1 text-sm text-amber-900">
               {details.statusMessage}
             </p>
           </div>
-          <span className="rounded-full border border-amber-400 px-3 py-1 text-xs font-medium text-amber-900">
+          <span className="rounded-full border border-amber-400 bg-white/70 px-3 py-1.5 text-xs font-semibold text-amber-900">
             {details.statusLabel}
           </span>
         </div>
-      </section>
+      </Card>
 
-      <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5">
+      <Card className="mt-5 p-5 sm:p-6">
         <h2 className="font-semibold text-slate-900">Required integration work</h2>
-        <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-600">
-          {details.requirements.map((requirement) => <li key={requirement}>{requirement}</li>)}
+        <ul className="mt-4 space-y-3">
+          {details.requirements.map((requirement) => (
+            <li key={requirement} className="flex items-start gap-3 text-sm leading-6 text-slate-600">
+              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-forest-600" aria-hidden="true" />
+              {requirement}
+            </li>
+          ))}
         </ul>
-      </section>
+      </Card>
     </div>
   )
 }
