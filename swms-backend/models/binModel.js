@@ -4,7 +4,7 @@ const selection = `SELECT b.id, b.household_id AS "householdId", b.bin_code AS "
   b.capacity, b.fill_level AS "fillLevel", b.status,
   b.created_at AS "createdAt", b.updated_at AS "updatedAt",
   u.full_name AS "householdName", h.collector_id AS "collectorId",
-  r.company_id AS "companyId"
+  r.company_id AS "companyId", h.district
   FROM waste_bins b
   JOIN households h ON h.id = b.household_id
   JOIN users u ON u.id = h.user_id
@@ -15,10 +15,12 @@ exports.list = async (scope = {}, pagination = { limit: 50, offset: 0 }) => {
   let query = selection;
   let values = [];
   if (scope.collectorId !== undefined) {
-    query += " WHERE h.collector_id = $1";
+    query += ` WHERE h.collector_id = $1 AND company_has_active_district(r.company_id, h.district)
+      AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district))`;
     values = [scope.collectorId];
   } else if (scope.companyId !== undefined) {
-    query += " WHERE r.company_id = $1";
+    query += ` WHERE r.company_id = $1 AND company_has_active_district(r.company_id, h.district)
+      AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district))`;
     values = [scope.companyId];
   }
   values.push(pagination.limit, pagination.offset);
@@ -31,10 +33,14 @@ exports.listFull = async (scope = {}, pagination = { limit: 50, offset: 0 }) => 
   const values = [];
   if (scope.collectorId !== undefined) {
     values.push(scope.collectorId);
-    query += ` AND h.collector_id = $${values.length}`;
+    query += ` AND h.collector_id = $${values.length}
+      AND company_has_active_district(r.company_id, h.district)
+      AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district))`;
   } else if (scope.companyId !== undefined) {
     values.push(scope.companyId);
-    query += ` AND r.company_id = $${values.length}`;
+    query += ` AND r.company_id = $${values.length}
+      AND company_has_active_district(r.company_id, h.district)
+      AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district))`;
   }
   values.push(pagination.limit, pagination.offset);
   const result = await pool.query(`${query} ORDER BY b.fill_level DESC, b.id LIMIT $${values.length - 1} OFFSET $${values.length}`, values);
@@ -99,10 +105,14 @@ exports.statistics = async (scope = {}) => {
   let where = "";
   if (scope.collectorId !== undefined) {
     values.push(scope.collectorId);
-    where = ` WHERE h.collector_id = $${values.length}`;
+    where = ` WHERE h.collector_id = $${values.length}
+      AND company_has_active_district(r.company_id, h.district)
+      AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district))`;
   } else if (scope.companyId !== undefined) {
     values.push(scope.companyId);
-    where = ` WHERE r.company_id = $${values.length}`;
+    where = ` WHERE r.company_id = $${values.length}
+      AND company_has_active_district(r.company_id, h.district)
+      AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district))`;
   }
   const result = await pool.query(
     `SELECT COUNT(*)::int AS "totalBins",

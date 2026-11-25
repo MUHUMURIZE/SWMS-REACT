@@ -6,6 +6,8 @@ const schemas = require("../validation/schemas");
 const routeFiles = [
   { file: "authRoutes.js", prefix: "/api/auth", tag: "Auth" },
   { file: "companyRoutes.js", prefix: "/api/companies", tag: "Companies" },
+  { file: "districtRoutes.js", prefix: "/api/districts", tag: "Districts" },
+  { file: "vehicleRoutes.js", prefix: "/api/vehicles", tag: "Fleet Vehicles" },
   { file: "representativeRoutes.js", prefix: "/api/representatives", tag: "Representatives" },
   { file: "collectorRoutes.js", prefix: "/api/collectors", tag: "Collectors" },
   { file: "householdRoutes.js", prefix: "/api/households", tag: "Households" },
@@ -39,6 +41,8 @@ const guardRoles = {
   authorizeCollectionManager: ["ADMIN", "COMPANY_REPRESENTATIVE", "COLLECTOR"],
   authorizeCollectionDeleter: ["ADMIN", "COMPANY_REPRESENTATIVE"],
   authorizeExportReader: ["ADMIN", "COMPANY_REPRESENTATIVE", "COLLECTOR"],
+  authorizeVehicleReader: ["ADMIN", "COMPANY_REPRESENTATIVE", "COLLECTOR"],
+  authorizeVehicleManager: ["ADMIN", "COMPANY_REPRESENTATIVE"],
 };
 
 const bodyExamples = {
@@ -66,6 +70,33 @@ const bodyExamples = {
     cell: "Kiyenzi",
     village: "Rugarama",
   },
+  "POST /api/districts": { name: "Kayonza" },
+  "POST /api/districts/{id}/agreements": {
+    companyId: 1,
+    startsOn: "2026-12-01",
+    endsOn: "2027-11-30",
+  },
+  "POST /api/districts/agreements/{id}/status": { status: "ACTIVE" },
+  "POST /api/vehicles": {
+    companyId: 1,
+    registrationNumber: "RAB-123A",
+    vehicleType: "COMPACTOR",
+    make: "Isuzu",
+    model: "N-Series",
+    capacity: 8500.5,
+    fuelType: "DIESEL",
+    registrationExpiresOn: "2027-05-31",
+  },
+  "PUT /api/vehicles/{id}": { insuranceExpiresOn: "2027-08-31" },
+  "PUT /api/vehicles/{id}/status": { status: "MAINTENANCE" },
+  "PUT /api/vehicles/{id}/assignment": { collectorId: 1 },
+  "POST /api/vehicles/{id}/maintenance": {
+    description: "Scheduled engine service",
+    scheduledFor: "2026-12-10",
+    cost: 420.5,
+    odometerKm: 18200,
+  },
+  "PUT /api/vehicles/{id}/maintenance/{maintenanceId}/status": { status: "COMPLETED" },
   "PUT /api/companies/{id}": {
     name: "Green City Waste Ltd",
     district: "Kayonza",
@@ -167,6 +198,24 @@ const summaries = {
   "GET /api/auth/profile": "Get the current user's profile",
   "PUT /api/auth/profile": "Update the current user's profile",
   "PUT /api/auth/change-password": "Change the current user's password",
+  "POST /api/districts": "Create a district",
+  "GET /api/districts": "List national districts and assignment states",
+  "GET /api/districts/{id}": "Get a district",
+  "POST /api/districts/{id}/agreements": "Create a pending company agreement for a district",
+  "GET /api/districts/{id}/agreements": "List district agreement history",
+  "GET /api/districts/agreements": "List national agreement history",
+  "POST /api/districts/agreements/{id}/status": "Activate, suspend, or terminate a district agreement",
+  "GET /api/vehicles": "List fleet vehicles in the user's authorized scope",
+  "GET /api/vehicles/{id}": "Get a fleet vehicle",
+  "POST /api/vehicles": "Register a fleet vehicle",
+  "PUT /api/vehicles/{id}": "Update fleet vehicle details",
+  "PUT /api/vehicles/{id}/status": "Change vehicle availability status",
+  "PUT /api/vehicles/{id}/assignment": "Assign a vehicle to an authorized collector",
+  "DELETE /api/vehicles/{id}/assignment": "Release a vehicle assignment",
+  "GET /api/vehicles/{id}/assignments": "View vehicle assignment history",
+  "GET /api/vehicles/{id}/maintenance": "View vehicle maintenance history",
+  "POST /api/vehicles/{id}/maintenance": "Schedule vehicle maintenance",
+  "PUT /api/vehicles/{id}/maintenance/{maintenanceId}/status": "Complete or cancel scheduled maintenance",
   "GET /api/me": "Get the current household profile",
   "PUT /api/me": "Update the current household profile",
   "GET /api/my-progress": "Get the current household's collection progress",
@@ -186,11 +235,13 @@ const summaries = {
 
 const singularTags = {
   Companies: "company",
+  Districts: "district",
   Representatives: "representative",
   Collectors: "collector",
   Households: "household",
   Collections: "collection",
   "Waste Bins": "waste bin",
+  "Fleet Vehicles": "fleet vehicle",
   Notifications: "notification",
 };
 
@@ -225,6 +276,11 @@ function schemaToOpenApi(schema) {
       property.type = "integer";
       property.minimum = rule.min === undefined ? 1 : rule.min;
       if (rule.max !== undefined) property.maximum = rule.max;
+    } else if (rule.type === "decimal") {
+      property.type = "number";
+      if (rule.min !== undefined) property.minimum = rule.min;
+      if (rule.max !== undefined) property.maximum = rule.max;
+      if (rule.scale !== undefined) property.multipleOf = 1 / (10 ** rule.scale);
     } else if (rule.type === "email") {
       property.type = "string";
       property.format = "email";
@@ -241,6 +297,9 @@ function schemaToOpenApi(schema) {
     } else if (rule.type === "datetime") {
       property.type = "string";
       property.format = "date-time";
+    } else if (rule.type === "date") {
+      property.type = "string";
+      property.format = "date";
     } else if (rule.type === "enum") {
       property.type = "string";
       property.enum = rule.values;
@@ -399,6 +458,55 @@ const collectionExamplesBySchedule = {
   },
 };
 
+const districtExample = {
+  id: 1,
+  name: "Kayonza",
+  assignmentStatus: "UNASSIGNED",
+  agreementCount: 1,
+  activeAgreementCount: 0,
+};
+
+const agreementExample = {
+  id: 1,
+  districtId: 1,
+  districtName: "Kayonza",
+  companyId: 1,
+  companyName: "Green City Waste",
+  status: "PENDING",
+  startsOn: "2026-12-01",
+  endsOn: "2027-11-30",
+  activatedAt: null,
+  endedAt: null,
+};
+
+const vehicleExample = {
+  id: 1,
+  companyId: 1,
+  registrationNumber: "RAB-123A",
+  vehicleType: "COMPACTOR",
+  make: "Isuzu",
+  model: "N-Series",
+  capacity: 8500.5,
+  fuelType: "DIESEL",
+  status: "AVAILABLE",
+  registrationExpiresOn: "2027-05-31",
+  insuranceExpiresOn: "2027-08-31",
+  inspectionExpiresOn: "2027-06-30",
+  assignedCollectorId: null,
+  assignedCollectorName: null,
+};
+
+const maintenanceExample = {
+  id: 1,
+  description: "Scheduled engine service",
+  serviceProvider: "Fleet Service Center",
+  scheduledFor: "2026-12-10",
+  status: "SCHEDULED",
+  cost: 420.5,
+  odometerKm: 18200,
+  completedAt: null,
+};
+
 const completedCollectionExample = {
   ...collectionExample,
   scheduledAt: "2026-11-23T09:00:00.000Z",
@@ -422,7 +530,48 @@ const reportExample = {
 const configuredServerUrl = (process.env.API_SERVER_URL || "").trim();
 
 function exampleForSuccess(method, routePath) {
-  if (method === "delete") return undefined;
+  if (method === "delete" && routePath !== "/api/vehicles/{id}/assignment") return undefined;
+  if (routePath === "/api/vehicles") {
+    return { data: method === "get" ? [vehicleExample] : vehicleExample };
+  }
+  if (routePath === "/api/vehicles/{id}" || routePath === "/api/vehicles/{id}/status"
+    || routePath === "/api/vehicles/{id}/assignment") {
+    return { data: vehicleExample };
+  }
+  if (routePath === "/api/vehicles/{id}/assignments") {
+    return {
+      data: [{
+        id: 1,
+        collectorId: 1,
+        collectorName: "Jordan Collector",
+        assignedBy: 2,
+        assignedAt: "2026-11-24T08:00:00.000Z",
+        unassignedBy: null,
+        unassignedAt: null,
+      }],
+    };
+  }
+  if (routePath === "/api/vehicles/{id}/maintenance") {
+    return {
+      data: method === "get"
+        ? [maintenanceExample]
+        : { ...maintenanceExample, status: "SCHEDULED" },
+    };
+  }
+  if (routePath === "/api/vehicles/{id}/maintenance/{maintenanceId}/status") {
+    return { data: { ...maintenanceExample, status: "COMPLETED", completedAt: "2026-12-10T12:00:00.000Z" } };
+  }
+  if (routePath === "/api/districts") {
+    return { data: method === "get" ? [districtExample] : districtExample };
+  }
+  if (routePath === "/api/districts/agreements"
+    || routePath === "/api/districts/{id}/agreements") {
+    return { data: method === "get" ? [agreementExample] : agreementExample };
+  }
+  if (routePath === "/api/districts/agreements/{id}/status") {
+    return { data: { ...agreementExample, status: "ACTIVE", activatedAt: "2026-12-01T00:00:00.000Z" } };
+  }
+  if (routePath === "/api/districts/{id}") return { data: districtExample };
   const profileRoute = Object.keys(profileExamples)
     .find((basePath) => routePath === basePath || routePath === `${basePath}/{id}`);
   if (profileRoute && method === "get" && routePath === profileRoute) {
@@ -510,6 +659,12 @@ function exampleForSuccess(method, routePath) {
     return {
       data: {
         totalCompanies: 4,
+        totalDistricts: 30,
+        assignedDistricts: 24,
+        unassignedDistricts: 6,
+        activeAgreements: 24,
+        expiredAgreements: 3,
+        suspendedAgreements: 1,
         totalRepresentatives: 4,
         totalCollectors: 18,
         totalHouseholds: 420,
@@ -683,7 +838,9 @@ function exampleForSuccess(method, routePath) {
 }
 
 function successResponse(method, routePath) {
-  if (method === "delete") return { description: "Resource deleted successfully; no response body." };
+  if (method === "delete" && routePath !== "/api/vehicles/{id}/assignment") {
+    return { description: "Resource deleted successfully; no response body." };
+  }
   if (routePath === "/api/exports/{resource}/{format}") {
     return {
       description: "The requested resource export file.",
@@ -815,6 +972,9 @@ function generatePaths() {
         ...(pathParameters.length ? { parameters: pathParameters } : {}),
         ...(method === "get" && [
           "/api/companies",
+          "/api/vehicles",
+          "/api/vehicles/{id}/assignments",
+          "/api/vehicles/{id}/maintenance",
           "/api/representatives",
           "/api/collectors",
           "/api/households",
@@ -943,6 +1103,8 @@ const definition = {
   tags: [
     { name: "Auth", description: "Registration, login, and account security." },
     { name: "Companies", description: "Company records; each has at most one Company Representative." },
+    { name: "Districts", description: "National districts and historically preserved company operating agreements." },
+    { name: "Fleet Vehicles", description: "Company-owned vehicles, collector assignments, maintenance schedules, and service history." },
     { name: "Representatives", description: "Company Representative accounts managed by administrators." },
     { name: "Collectors", description: "Collectors assigned to a company representative." },
     { name: "Households", description: "Households managed by their collector, company representative, or administrator." },

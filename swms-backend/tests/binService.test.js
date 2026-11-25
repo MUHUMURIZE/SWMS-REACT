@@ -7,6 +7,7 @@ const binService = require("../services/binService");
 const accountService = require("../services/accountService");
 const collectorModel = require("../models/collectorModel");
 const userModel = require("../models/userModel");
+const districtAuthorizationService = require("../services/districtAuthorizationService");
 
 test("fill levels map to the required bin statuses", () => {
   const cases = [
@@ -82,39 +83,47 @@ test("collector can create a bin only for a household assigned to them", async (
   assert.equal(create.mock.callCount(), 0);
 });
 
+test("collector cannot create a bin in a district without an active agreement", async (t) => {
+  t.mock.method(pool, "query", async () => ({ rows: [{ id: 14 }] }));
+  t.mock.method(householdModel, "findById", async () => ({
+    id: 7,
+    collectorId: 14,
+    companyId: 5,
+    district: "Kayonza",
+  }));
+  t.mock.method(collectorModel, "findById", async () => ({
+    id: 14,
+    companyId: 5,
+    district: "Kayonza",
+  }));
+  t.mock.method(districtAuthorizationService, "companyCanOperateInDistrict", async () => false);
+  const create = t.mock.method(binModel, "create", async () => ({ id: 22 }));
+
+  await assert.rejects(
+    binService.create({ id: 8, role: "COLLECTOR" }, { householdId: 7 }),
+    (error) => error.statusCode === 404
+  );
+  assert.equal(create.mock.callCount(), 0);
+});
+
 test("a household cannot receive a second bin", async (t) => {
   t.mock.method(householdModel, "findById", async () => ({
     id: 7,
     collectorId: 14,
+    companyId: 5,
+    district: "Kayonza",
   }));
   t.mock.method(pool, "query", async () => ({ rows: [{ id: 14 }] }));
+  t.mock.method(collectorModel, "findById", async () => ({
+    id: 14,
+    companyId: 5,
+    district: "Kayonza",
+  }));
+  t.mock.method(districtAuthorizationService, "companyCanOperateInDistrict", async () => true);
   t.mock.method(binModel, "create", async () => {
     const error = new Error("unique constraint");
     error.code = "23505";
     throw error;
-  });
-
-  test("creating a household account creates its bin in the same transaction", async (t) => {
-    const client = {
-      query: async () => ({ rows: [] }),
-      release() {},
-    };
-    t.mock.method(pool, "connect", async () => client);
-    t.mock.method(collectorModel, "findById", async () => ({ id: 14 }));
-    t.mock.method(userModel, "create", async () => 80);
-    t.mock.method(householdModel, "create", async () => 7);
-    const createBin = t.mock.method(binModel, "createForHousehold", async () => 25);
-
-    await accountService.createAccount({
-      fullName: "Household User",
-      email: "household@example.com",
-      passwordHash: "hash",
-      role: "HOUSEHOLD",
-      collectorId: 14,
-      address: "7 Main Street",
-    });
-
-    assert.deepEqual(createBin.mock.calls[0].arguments, [client, 7]);
   });
 
   await assert.rejects(
@@ -127,9 +136,43 @@ test("a household cannot receive a second bin", async (t) => {
   );
 });
 
+test("creating a household account creates its bin in the same transaction", async (t) => {
+  const client = {
+    query: async () => ({ rows: [] }),
+    release() {},
+  };
+  t.mock.method(pool, "connect", async () => client);
+  t.mock.method(collectorModel, "findById", async () => ({ id: 14 }));
+  t.mock.method(userModel, "create", async () => 80);
+  t.mock.method(householdModel, "create", async () => 7);
+  const createBin = t.mock.method(binModel, "createForHousehold", async () => 25);
+
+  await accountService.createAccount({
+    fullName: "Household User",
+    email: "household@example.com",
+    passwordHash: "hash",
+    role: "HOUSEHOLD",
+    collectorId: 14,
+    address: "7 Main Street",
+  });
+
+  assert.deepEqual(createBin.mock.calls[0].arguments, [client, 7]);
+});
+
 test("progress updates calculate status and emptying resets progress", async (t) => {
-  t.mock.method(binModel, "findById", async () => ({ id: 22, collectorId: 14 }));
+  t.mock.method(binModel, "findById", async () => ({
+    id: 22,
+    collectorId: 14,
+    companyId: 5,
+    district: "Kayonza",
+  }));
   t.mock.method(pool, "query", async () => ({ rows: [{ id: 14 }] }));
+  t.mock.method(collectorModel, "findById", async () => ({
+    id: 14,
+    companyId: 5,
+    district: "Kayonza",
+  }));
+  t.mock.method(districtAuthorizationService, "companyCanOperateInDistrict", async () => true);
   const updateProgress = t.mock.method(binModel, "updateProgress", async (_id, fillLevel, status) => ({
     id: 22,
     fillLevel,
@@ -161,8 +204,16 @@ test("bin deletion is rejected while its household exists", async (t) => {
     id: 22,
     householdId: 7,
     collectorId: 14,
+    companyId: 5,
+    district: "Kayonza",
   }));
   t.mock.method(pool, "query", async () => ({ rows: [{ id: 14 }] }));
+  t.mock.method(collectorModel, "findById", async () => ({
+    id: 14,
+    companyId: 5,
+    district: "Kayonza",
+  }));
+  t.mock.method(districtAuthorizationService, "companyCanOperateInDistrict", async () => true);
   const remove = t.mock.method(binModel, "remove", async () => true);
 
   await assert.rejects(

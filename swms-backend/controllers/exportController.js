@@ -71,18 +71,31 @@ async function getScopedRows(req, resource) {
     if (resource === "households") {
       query = `SELECT h.id, u.full_name AS "fullName", u.email, h.collector_id AS "collectorId",
         h.address, h.district FROM households h JOIN users u ON u.id = h.user_id
-        WHERE h.collector_id = (SELECT id FROM collectors WHERE user_id = $1) ORDER BY h.id`;
+        JOIN collectors c ON c.id = h.collector_id
+        JOIN representatives r ON r.id = c.representative_id
+        WHERE h.collector_id = (SELECT id FROM collectors WHERE user_id = $1)
+          AND company_has_active_district(r.company_id, h.district)
+          AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district)) ORDER BY h.id`;
       values = [req.user.id];
     } else if (resource === "bins") {
       query = `SELECT b.id, b.household_id AS "householdId", b.bin_code AS "binCode",
         b.capacity, b.fill_level AS "fillLevel", b.status FROM waste_bins b
         JOIN households h ON h.id = b.household_id
-        WHERE h.collector_id = (SELECT id FROM collectors WHERE user_id = $1) ORDER BY b.id`;
+        JOIN collectors c ON c.id = h.collector_id
+        JOIN representatives r ON r.id = c.representative_id
+        WHERE h.collector_id = (SELECT id FROM collectors WHERE user_id = $1)
+          AND company_has_active_district(r.company_id, h.district)
+          AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district)) ORDER BY b.id`;
       values = [req.user.id];
     } else if (resource === "collections") {
-      query = `SELECT id, household_id AS "householdId", collector_id AS "collectorId",
-        scheduled_at AS "scheduledAt", status FROM collections
-        WHERE collector_id = (SELECT id FROM collectors WHERE user_id = $1) ORDER BY id`;
+      query = `SELECT cl.id, cl.household_id AS "householdId", cl.collector_id AS "collectorId",
+        cl.scheduled_at AS "scheduledAt", cl.status FROM collections cl
+        JOIN households h ON h.id = cl.household_id
+        JOIN collectors c ON c.id = cl.collector_id
+        JOIN representatives r ON r.id = c.representative_id
+        WHERE cl.collector_id = (SELECT id FROM collectors WHERE user_id = $1)
+          AND company_has_active_district(r.company_id, h.district)
+          AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district)) ORDER BY cl.id`;
       values = [req.user.id];
     }
   }
@@ -100,14 +113,17 @@ async function getScopedRows(req, resource) {
         r.company_id AS "companyId", c.district, c.sector
         FROM collectors c JOIN users u ON u.id = c.user_id
         JOIN representatives r ON r.id = c.representative_id
-        WHERE r.company_id = (SELECT company_id FROM representatives WHERE user_id = $1) ORDER BY c.id`;
+        WHERE r.company_id = (SELECT company_id FROM representatives WHERE user_id = $1)
+          AND company_has_active_district(r.company_id, c.district) ORDER BY c.id`;
       values = [req.user.id];
     } else if (resource === "households") {
       query = `SELECT h.id, u.full_name AS "fullName", u.email, h.collector_id AS "collectorId",
         h.address, h.district FROM households h JOIN users u ON u.id = h.user_id
         JOIN collectors c ON c.id = h.collector_id
         JOIN representatives r ON r.id = c.representative_id
-        WHERE r.company_id = (SELECT company_id FROM representatives WHERE user_id = $1) ORDER BY h.id`;
+        WHERE r.company_id = (SELECT company_id FROM representatives WHERE user_id = $1)
+          AND company_has_active_district(r.company_id, h.district)
+          AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district)) ORDER BY h.id`;
       values = [req.user.id];
     } else if (resource === "bins") {
       query = `SELECT b.id, b.household_id AS "householdId", b.bin_code AS "binCode",
@@ -115,14 +131,19 @@ async function getScopedRows(req, resource) {
         JOIN households h ON h.id = b.household_id
         JOIN collectors c ON c.id = h.collector_id
         JOIN representatives r ON r.id = c.representative_id
-        WHERE r.company_id = (SELECT company_id FROM representatives WHERE user_id = $1) ORDER BY b.id`;
+        WHERE r.company_id = (SELECT company_id FROM representatives WHERE user_id = $1)
+          AND company_has_active_district(r.company_id, h.district)
+          AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district)) ORDER BY b.id`;
       values = [req.user.id];
     } else if (resource === "collections") {
       query = `SELECT cl.id, cl.household_id AS "householdId", cl.collector_id AS "collectorId",
         cl.scheduled_at AS "scheduledAt", cl.status FROM collections cl
         JOIN collectors c ON c.id = cl.collector_id
         JOIN representatives r ON r.id = c.representative_id
-        WHERE r.company_id = (SELECT company_id FROM representatives WHERE user_id = $1) ORDER BY cl.id`;
+        JOIN households h ON h.id = cl.household_id
+        WHERE r.company_id = (SELECT company_id FROM representatives WHERE user_id = $1)
+          AND company_has_active_district(r.company_id, h.district)
+          AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district)) ORDER BY cl.id`;
       values = [req.user.id];
     }
   }

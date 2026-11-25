@@ -39,7 +39,9 @@ exports.sector = async (sector) => {
 
 exports.collector = async (collectorId) => {
   const result = await pool.query(
-    metricQuery("WHERE c.id = $1", ""),
+    metricQuery(`WHERE c.id = $1
+      AND company_has_active_district(r.company_id, h.district)
+      AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district))`, ""),
     [collectorId]
   );
   return result.rows[0];
@@ -47,7 +49,9 @@ exports.collector = async (collectorId) => {
 
 exports.company = async (companyId) => {
   const result = await pool.query(
-    metricQuery("WHERE r.company_id = $1", ""),
+    metricQuery(`WHERE r.company_id = $1
+      AND company_has_active_district(r.company_id, h.district)
+      AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district))`, ""),
     [companyId]
   );
   return result.rows[0];

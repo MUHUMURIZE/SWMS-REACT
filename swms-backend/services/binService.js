@@ -1,6 +1,8 @@
 const { pool } = require("../config/db");
 const householdModel = require("../models/householdModel");
 const binModel = require("../models/binModel");
+const collectorModel = require("../models/collectorModel");
+const districtAuthorizationService = require("./districtAuthorizationService");
 const AppError = require("../utils/AppError");
 const notificationModel = require("../models/notificationModel");
 const notificationService = require("./notificationService");
@@ -31,16 +33,27 @@ function statusFor(fillLevel) {
   return "FULL";
 }
 
+function districtsMatch(left, right) {
+  return typeof left === "string" && typeof right === "string"
+    && left.trim().toLowerCase() === right.trim().toLowerCase();
+}
+
 async function accessibleBin(user, binId) {
   const bin = await binModel.findById(binId);
   if (!bin) throw new AppError(404, "Waste bin not found.", "NOT_FOUND");
   if (user.role === "ADMIN") return bin;
   if (user.role === "COLLECTOR") {
     const collectorId = await collectorIdFor(user.id);
-    if (bin.collectorId === collectorId) return bin;
+    const collector = await collectorModel.findById(collectorId);
+    if (bin.collectorId === collectorId && collector
+      && districtsMatch(bin.district, collector.district)
+      && await districtAuthorizationService.companyCanOperateInDistrict(bin.companyId, bin.district)) return bin;
   } else if (user.role === "COMPANY_REPRESENTATIVE") {
     const companyId = await companyIdFor(user.id);
-    if (bin.companyId === companyId) return bin;
+    const collector = await collectorModel.findById(bin.collectorId);
+    if (bin.companyId === companyId && collector
+      && districtsMatch(bin.district, collector.district)
+      && await districtAuthorizationService.companyCanOperateInDistrict(companyId, bin.district)) return bin;
   }
   throw new AppError(404, "Waste bin not found.", "NOT_FOUND");
 }
@@ -64,12 +77,21 @@ exports.create = async (user, data) => {
   if (!household) throw new AppError(404, "Household not found.", "NOT_FOUND");
   if (user.role === "COLLECTOR") {
     const collectorId = await collectorIdFor(user.id);
-    if (household.collectorId !== collectorId) {
+    const collector = await collectorModel.findById(collectorId);
+    if (household.collectorId !== collectorId || !collector
+      || !districtsMatch(household.district, collector.district)
+      || !(await districtAuthorizationService.companyCanOperateInDistrict(
+        household.companyId,
+        household.district
+      ))) {
       throw new AppError(404, "Household not found.", "NOT_FOUND");
     }
   } else if (user.role === "COMPANY_REPRESENTATIVE") {
     const companyId = await companyIdFor(user.id);
-    if (household.companyId !== companyId) {
+    const collector = await collectorModel.findById(household.collectorId);
+    if (household.companyId !== companyId || !collector
+      || !districtsMatch(household.district, collector.district)
+      || !(await districtAuthorizationService.companyCanOperateInDistrict(companyId, household.district))) {
       throw new AppError(404, "Household not found.", "NOT_FOUND");
     }
   }

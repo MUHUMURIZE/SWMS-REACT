@@ -8,6 +8,10 @@ const reportModel = require("../models/reportModel");
 const collectionModel = require("../models/collectionModel");
 const { toCsv } = require("../utils/exportRows");
 const reportController = require("../controllers/reportController");
+const collectorModel = require("../models/collectorModel");
+const districtAuthorizationService = require("../services/districtAuthorizationService");
+const householdModel = require("../models/householdModel");
+const collectionController = require("../controllers/collectionController");
 
 test("bin threshold notifications fire only across 80, 90 and 100 boundaries", async (t) => {
   t.mock.method(pool, "query", async () => ({ rows: [{ id: 14 }] }));
@@ -16,6 +20,8 @@ test("bin threshold notifications fire only across 80, 90 and 100 boundaries", a
     binCode: "BIN-22",
     householdId: 7,
     collectorId: 14,
+    companyId: 5,
+    district: "Kayonza",
     fillLevel: 79,
   }));
   t.mock.method(binModel, "updateProgress", async () => ({
@@ -24,6 +30,12 @@ test("bin threshold notifications fire only across 80, 90 and 100 boundaries", a
     fillLevel: 80,
     status: "HIGH",
   }));
+  t.mock.method(collectorModel, "findById", async () => ({
+    id: 14,
+    companyId: 5,
+    district: "Kayonza",
+  }));
+  t.mock.method(districtAuthorizationService, "companyCanOperateInDistrict", async () => true);
   let notificationLevel = null;
   t.mock.method(notificationService, "notifyBinFillLevel", async (_bin, level) => {
     notificationLevel = level;
@@ -31,6 +43,56 @@ test("bin threshold notifications fire only across 80, 90 and 100 boundaries", a
 
   await binService.updateProgress({ id: 8, role: "COLLECTOR" }, 22, 80);
   assert.equal(notificationLevel, 80);
+});
+
+test("collectors cannot schedule collections without an active district agreement", async (t) => {
+  t.mock.method(pool, "query", async () => ({ rows: [{ id: 14 }] }));
+  t.mock.method(householdModel, "findById", async () => ({
+    id: 7,
+    companyId: 5,
+    district: "Kayonza",
+  }));
+  t.mock.method(householdModel, "findCollectorId", async () => 14);
+  t.mock.method(collectorModel, "findById", async () => ({
+    id: 14,
+    companyId: 5,
+    district: "Kayonza",
+  }));
+  t.mock.method(districtAuthorizationService, "companyCanOperateInDistrict", async () => false);
+  const create = t.mock.method(collectionModel, "create", async () => ({ id: 3 }));
+
+  await assert.rejects(
+    collectionController.create({
+      body: { householdId: 7, collectorId: 14, scheduledAt: "2026-11-25T10:00:00Z" },
+      user: { id: 8, role: "COLLECTOR" },
+    }, { status() { return this; }, json() {} }),
+    (error) => error.statusCode === 403
+  );
+  assert.equal(create.mock.callCount(), 0);
+});
+
+test("collectors cannot read collections after their district agreement ends", async (t) => {
+  t.mock.method(pool, "query", async () => ({ rows: [{ id: 14 }] }));
+  t.mock.method(collectionModel, "findById", async () => ({
+    id: 3,
+    collectorId: 14,
+    companyId: 5,
+    district: "Kayonza",
+  }));
+  t.mock.method(collectorModel, "findById", async () => ({
+    id: 14,
+    companyId: 5,
+    district: "Kayonza",
+  }));
+  t.mock.method(districtAuthorizationService, "companyCanOperateInDistrict", async () => false);
+
+  await assert.rejects(
+    collectionController.get({
+      params: { id: 3 },
+      user: { id: 8, role: "COLLECTOR" },
+    }, { json() {} }),
+    (error) => error.statusCode === 404
+  );
 });
 
 test("CSV exports safely quote commas and quotes", () => {

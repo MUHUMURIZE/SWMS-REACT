@@ -44,6 +44,18 @@ exports.company = {
   name: { type: "string", required: true, minLength: 1, maxLength: 160 },
   ...location,
 };
+exports.district = {
+  name: { type: "string", required: true, minLength: 1, maxLength: 160 },
+};
+exports.districtAgreement = {
+  companyId: id(true),
+  startsOn: { type: "date", required: true },
+  endsOn: { type: "date" },
+};
+exports.districtAgreementTransition = {
+  status: { type: "enum", required: true, values: ["ACTIVE", "SUSPENDED", "TERMINATED"] },
+  reason: text(false, 1000),
+};
 exports.representativeCreate = {
   fullName: text(true, 160),
   email: { type: "email", required: true, maxLength: 254 },
@@ -119,4 +131,50 @@ exports.binUpdate = {
 };
 exports.binProgress = {
   fillLevel: { type: "number", required: true, min: 0, max: 100 },
+};
+exports.vehicleCreate = {
+  companyId: id(),
+  registrationNumber: { type: "string", required: true, minLength: 1, maxLength: 32 },
+  vehicleType: { type: "string", required: true, minLength: 1, maxLength: 32 },
+  make: text(false, 80),
+  model: text(false, 80),
+  capacity: { type: "decimal", required: true, min: 0.01, max: 9999999999.99, scale: 2 },
+  fuelType: {
+    type: "enum",
+    required: true,
+    values: ["DIESEL", "PETROL", "ELECTRIC", "HYBRID", "CNG", "OTHER"],
+  },
+  registrationExpiresOn: { type: "date" },
+  insuranceExpiresOn: { type: "date" },
+  inspectionExpiresOn: { type: "date" },
+};
+exports.vehicleUpdate = {
+  registrationNumber: { type: "string", minLength: 1, maxLength: 32 },
+  vehicleType: { type: "string", minLength: 1, maxLength: 32 },
+  make: text(false, 80),
+  model: text(false, 80),
+  capacity: { type: "decimal", min: 0.01, max: 9999999999.99, scale: 2 },
+  fuelType: {
+    type: "enum",
+    values: ["DIESEL", "PETROL", "ELECTRIC", "HYBRID", "CNG", "OTHER"],
+  },
+  registrationExpiresOn: { type: "date" },
+  insuranceExpiresOn: { type: "date" },
+  inspectionExpiresOn: { type: "date" },
+};
+exports.vehicleStatus = {
+  status: { type: "enum", required: true, values: ["AVAILABLE", "MAINTENANCE", "INACTIVE"] },
+};
+exports.vehicleAssignment = {
+  collectorId: id(true),
+};
+exports.vehicleMaintenanceCreate = {
+  description: { type: "string", required: true, minLength: 1, maxLength: 1000 },
+  serviceProvider: text(false, 160),
+  scheduledFor: { type: "date", required: true },
+  cost: { type: "decimal", min: 0, max: 9999999999.99, scale: 2 },
+  odometerKm: { type: "number", min: 0, max: 1000000000 },
+};
+exports.vehicleMaintenanceStatus = {
+  status: { type: "enum", required: true, values: ["COMPLETED", "CANCELLED"] },
 };

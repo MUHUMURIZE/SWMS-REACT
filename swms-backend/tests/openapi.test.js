@@ -14,6 +14,8 @@ test("OpenAPI includes every route declared in the backend route files", () => {
     const prefix = {
       authRoutes: "/api/auth",
       companyRoutes: "/api/companies",
+      districtRoutes: "/api/districts",
+      vehicleRoutes: "/api/vehicles",
       representativeRoutes: "/api/representatives",
       collectorRoutes: "/api/collectors",
       householdRoutes: "/api/households",
@@ -46,6 +48,41 @@ test("OpenAPI provides JWT authorization and validation-backed request schemas",
     scheme: "bearer",
     bearerFormat: "JWT",
     description: "Paste the JWT access token returned by POST /api/auth/login. Swagger adds the Bearer prefix.",
+  });
+
+  test("district agreement APIs document administrator-only lifecycle operations", () => {
+    const create = swaggerSpec.paths["/api/districts/{id}/agreements"].post;
+    assert.deepEqual(create.requestBody.content["application/json"].schema.required, ["companyId", "startsOn"]);
+    assert.equal(create.requestBody.content["application/json"].schema.properties.startsOn.format, "date");
+    assert.ok(create.description.includes("Administrator"));
+
+    const transition = swaggerSpec.paths["/api/districts/agreements/{id}/status"].post;
+    assert.deepEqual(
+      transition.requestBody.content["application/json"].schema.properties.status.enum,
+      ["ACTIVE", "SUSPENDED", "TERMINATED"]
+    );
+    assert.ok(swaggerSpec.paths["/api/districts/agreements"].get);
+  });
+
+  test("fleet APIs document vehicle ownership, assignments, and maintenance", () => {
+    const create = swaggerSpec.paths["/api/vehicles"].post;
+    assert.deepEqual(create.requestBody.content["application/json"].schema.properties.capacity, {
+      type: "number",
+      minimum: 0.01,
+      maximum: 9999999999.99,
+      multipleOf: 0.01,
+    });
+    assert.ok(create.description.includes("Company Representative"));
+    const assignment = swaggerSpec.paths["/api/vehicles/{id}/assignment"].put;
+    assert.deepEqual(
+      assignment.requestBody.content["application/json"].schema.required,
+      ["collectorId"]
+    );
+    const maintenance = swaggerSpec.paths["/api/vehicles/{id}/maintenance/{maintenanceId}/status"].put;
+    assert.deepEqual(
+      maintenance.parameters.map((parameter) => parameter.name),
+      ["id", "maintenanceId"]
+    );
   });
   assert.deepEqual(swaggerSpec.paths["/api/auth/login"].post.security, []);
   assert.deepEqual(swaggerSpec.paths["/api/companies"].get.security, [{ bearerAuth: [] }]);

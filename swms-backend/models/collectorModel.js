@@ -12,7 +12,12 @@ const selection = `SELECT c.id, c.user_id AS "userId", c.representative_id AS "r
 exports.list = async (companyId = null, pagination = { limit: 50, offset: 0 }) => {
   const result = companyId === null
     ? await pool.query(`${selection} ORDER BY c.id LIMIT $1 OFFSET $2`, [pagination.limit, pagination.offset])
-    : await pool.query(`${selection} WHERE r.company_id = $1 ORDER BY c.id LIMIT $2 OFFSET $3`, [companyId, pagination.limit, pagination.offset]);
+    : await pool.query(
+      `${selection} WHERE r.company_id = $1
+       AND company_has_active_district(r.company_id, c.district)
+       ORDER BY c.id LIMIT $2 OFFSET $3`,
+      [companyId, pagination.limit, pagination.offset]
+    );
   return result.rows;
 };
 

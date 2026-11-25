@@ -32,6 +32,13 @@ function validateBody(schema) {
           : `${field} must be a positive integer.`);
         continue;
       }
+      if (rule.type === "decimal" && (typeof value !== "number" || !Number.isFinite(value)
+        || value < (rule.min === undefined ? Number.MIN_VALUE : rule.min)
+        || value > (rule.max === undefined ? Number.MAX_VALUE : rule.max)
+        || (rule.scale !== undefined && !Number.isInteger(value * (10 ** rule.scale))))) {
+        errors.push(`${field} must be a number within the allowed range.`);
+        continue;
+      }
       if (rule.type === "email" && (typeof value !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))) {
         errors.push(`${field} must be a valid email address.`);
         continue;
@@ -64,6 +71,13 @@ function validateBody(schema) {
         errors.push(`${field} must be a valid date and time.`);
         continue;
       }
+      if (rule.type === "date" && (typeof value !== "string"
+        || !/^\d{4}-\d{2}-\d{2}$/.test(value)
+        || Number.isNaN(Date.parse(value))
+        || new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) !== value)) {
+        errors.push(`${field} must be a valid date in YYYY-MM-DD format.`);
+        continue;
+      }
       if (rule.type === "datetime") {
         req.body[field] = new Date(value).toISOString();
       }
@@ -84,14 +98,20 @@ function validateBody(schema) {
   };
 }
 
-function validateId(req, _res, next) {
-  const id = Number(req.params.id);
-  if (!Number.isSafeInteger(id) || id < 1) {
-    return next(new AppError(400, "The resource id must be a positive integer.", "VALIDATION_ERROR"));
-  }
-  req.params.id = id;
-  next();
+function validateIds(...params) {
+  return (req, _res, next) => {
+    for (const param of params) {
+      const id = Number(req.params[param]);
+      if (!Number.isSafeInteger(id) || id < 1) {
+        return next(new AppError(400, "The resource id must be a positive integer.", "VALIDATION_ERROR"));
+      }
+      req.params[param] = id;
+    }
+    next();
+  };
 }
+
+const validateId = validateIds("id");
 
 function requireRoleFields(fieldsByRole) {
   return (req, _res, next) => {
@@ -107,4 +127,5 @@ function requireRoleFields(fieldsByRole) {
 
 exports.validateBody = validateBody;
 exports.validateId = validateId;
+exports.validateIds = validateIds;
 exports.requireRoleFields = requireRoleFields;

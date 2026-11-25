@@ -19,7 +19,7 @@ const selection = `SELECT cl.id, cl.household_id AS "householdId",
   cl.notes, cl.collected_at AS "collectedAt", cl.created_by AS "createdBy",
   cl.created_at AS "createdAt", cl.updated_at AS "updatedAt",
   hu.full_name AS "householdName", cu.full_name AS "collectorName",
-  rep.id AS "representativeId", rep.company_id AS "companyId"
+  rep.id AS "representativeId", rep.company_id AS "companyId", h.district
   FROM collections cl
   JOIN households h ON h.id = cl.household_id
   JOIN users hu ON hu.id = h.user_id
@@ -34,10 +34,14 @@ exports.list = async (
   let where = "";
   let values = [];
   if (role === "COMPANY_REPRESENTATIVE") {
-    where = " WHERE rep.company_id = $1";
+    where = ` WHERE rep.company_id = $1
+      AND company_has_active_district(rep.company_id, h.district)
+      AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district))`;
     values = [companyId];
   } else if (role === "COLLECTOR") {
-    where = " WHERE cl.collector_id = $1";
+    where = ` WHERE cl.collector_id = $1
+      AND company_has_active_district(rep.company_id, h.district)
+      AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district))`;
     values = [collectorId];
   } else if (role === "HOUSEHOLD") {
     where = " WHERE h.id = $1";
@@ -213,10 +217,12 @@ exports.listScheduling = async ({ role, userId, pagination }, mode) => {
     scope = " AND h.user_id = $1";
     values.push(userId);
   } else if (role === "COLLECTOR") {
-    scope = " AND c.user_id = $1";
+    scope = ` AND c.user_id = $1 AND company_has_active_district(rep.company_id, h.district)
+      AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district))`;
     values.push(userId);
   } else if (role === "COMPANY_REPRESENTATIVE") {
-    scope = " AND rep.user_id = $1";
+    scope = ` AND rep.user_id = $1 AND company_has_active_district(rep.company_id, h.district)
+      AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district))`;
     values.push(userId);
   }
 

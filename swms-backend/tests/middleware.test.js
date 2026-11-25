@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { validateBody, validateId, requireRoleFields } = require("../middleware/validate");
+const { validateBody, validateId, validateIds, requireRoleFields } = require("../middleware/validate");
 const {
   authorizeAdmin,
   authorizeCollectionManager,
@@ -12,6 +12,8 @@ const {
   authorizeHousehold,
   authorizeAdminOrRepresentative,
   authorizeExportReader,
+  authorizeVehicleReader,
+  authorizeVehicleManager,
 } = require("../middleware/authorization");
 const { notFound, errorHandler } = require("../middleware/errorMiddleware");
 const schemas = require("../validation/schemas");
@@ -35,6 +37,18 @@ test("body validation normalizes ISO dates to a UTC timestamp", async () => {
   const req = { body: { scheduledAt: "2026-11-01T09:00:00Z" } };
   await run(validateBody({ scheduledAt: { type: "datetime", required: true } }), req);
   assert.equal(req.body.scheduledAt, "2026-11-01T09:00:00.000Z");
+});
+
+test("date-only validation rejects impossible dates and preserves valid calendar dates", async () => {
+  const req = { body: { startsOn: "2026-02-28" } };
+  await run(validateBody({ startsOn: { type: "date", required: true } }), req);
+  assert.equal(req.body.startsOn, "2026-02-28");
+  await assert.rejects(
+    run(validateBody({ startsOn: { type: "date", required: true } }), {
+      body: { startsOn: "2026-02-30" },
+    }),
+    (error) => error.statusCode === 400 && error.code === "VALIDATION_ERROR"
+  );
 });
 
 test("body validation trims ordinary strings but preserves passwords", async () => {
@@ -62,6 +76,31 @@ test("path IDs must be positive integers", async () => {
   await run(validateId, req);
   assert.equal(req.params.id, 12);
   await assert.rejects(run(validateId, { params: { id: "1 OR 1=1" } }), (error) => error.statusCode === 400);
+});
+
+test("multiple path IDs and decimal fields are validated", async () => {
+  const req = { params: { id: "3", maintenanceId: "7" } };
+  await run(validateIds("id", "maintenanceId"), req);
+  assert.deepEqual(req.params, { id: 3, maintenanceId: 7 });
+  await assert.rejects(
+    run(validateIds("id", "maintenanceId"), { params: { id: "3", maintenanceId: "0" } }),
+    (error) => error.statusCode === 400
+  );
+  const decimalRequest = { body: { capacity: 8500.5 } };
+  await run(validateBody({ capacity: { type: "decimal", required: true, min: 0.01 } }), decimalRequest);
+  assert.equal(decimalRequest.body.capacity, 8500.5);
+  await assert.rejects(
+    run(validateBody({ capacity: { type: "decimal", required: true, min: 0.01 } }), {
+      body: { capacity: "8500.5" },
+    }),
+    (error) => error.statusCode === 400
+  );
+  await assert.rejects(
+    run(validateBody({ capacity: { type: "decimal", required: true, min: 0.01, scale: 2 } }), {
+      body: { capacity: 8500.555 },
+    }),
+    (error) => error.statusCode === 400
+  );
 });
 
 test("role guards distinguish administrators from household accounts", async () => {
@@ -128,6 +167,22 @@ test("collector reports remain management-scoped while export access respects co
   await run(authorizeExportReader, { user: { role: "COLLECTOR" } });
   await assert.rejects(
     run(authorizeExportReader, { user: { role: "HOUSEHOLD" } }),
+    (error) => error.statusCode === 403
+  );
+});
+
+test("fleet reads and writes preserve company and collector role boundaries", async () => {
+  await run(authorizeVehicleReader, { user: { role: "ADMIN" } });
+  await run(authorizeVehicleReader, { user: { role: "COMPANY_REPRESENTATIVE" } });
+  await run(authorizeVehicleReader, { user: { role: "COLLECTOR" } });
+  await assert.rejects(
+    run(authorizeVehicleReader, { user: { role: "HOUSEHOLD" } }),
+    (error) => error.statusCode === 403
+  );
+  await run(authorizeVehicleManager, { user: { role: "ADMIN" } });
+  await run(authorizeVehicleManager, { user: { role: "COMPANY_REPRESENTATIVE" } });
+  await assert.rejects(
+    run(authorizeVehicleManager, { user: { role: "COLLECTOR" } }),
     (error) => error.statusCode === 403
   );
 });

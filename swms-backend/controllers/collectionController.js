@@ -1,6 +1,8 @@
 const { pool } = require("../config/db");
 const collectionModel = require("../models/collectionModel");
 const householdModel = require("../models/householdModel");
+const collectorModel = require("../models/collectorModel");
+const districtAuthorizationService = require("../services/districtAuthorizationService");
 const AppError = require("../utils/AppError");
 const auditModel = require("../models/auditModel");
 
@@ -20,10 +22,24 @@ async function canAccess(req, collection) {
     return collection.householdId === await getCurrentProfileId("households", req.user.id);
   }
   if (req.user.role === "COLLECTOR") {
-    return collection.collectorId === await getCurrentProfileId("collectors", req.user.id);
+    if (collection.collectorId !== await getCurrentProfileId("collectors", req.user.id)) return false;
+    const collector = await collectorModel.findById(collection.collectorId);
+    return Boolean(collector
+      && collector.district?.trim().toLowerCase() === collection.district?.trim().toLowerCase()
+      && await districtAuthorizationService.companyCanOperateInDistrict(
+        collection.companyId,
+        collection.district
+      ));
   }
   if (req.user.role === "COMPANY_REPRESENTATIVE") {
-    return collection.companyId === await getCurrentCompanyId(req.user.id);
+    if (collection.companyId !== await getCurrentCompanyId(req.user.id)) return false;
+    const collector = await collectorModel.findById(collection.collectorId);
+    return Boolean(collector
+      && collector.district?.trim().toLowerCase() === collection.district?.trim().toLowerCase()
+      && await districtAuthorizationService.companyCanOperateInDistrict(
+        collection.companyId,
+        collection.district
+      ));
   }
   return false;
 }
@@ -65,6 +81,16 @@ exports.create = async (req, res) => {
   if (req.user.role === "COMPANY_REPRESENTATIVE"
     && household.companyId !== await getCurrentCompanyId(req.user.id)) {
     throw new AppError(404, "Household not found.", "NOT_FOUND");
+  }
+  if (req.user.role === "COMPANY_REPRESENTATIVE" || req.user.role === "COLLECTOR") {
+    const collector = await collectorModel.findById(collectorId);
+    if (!collector || collector.district?.trim().toLowerCase() !== household.district?.trim().toLowerCase()
+      || !(await districtAuthorizationService.companyCanOperateInDistrict(
+        household.companyId,
+        household.district
+      ))) {
+      throw new AppError(403, "The collection district is not authorized for this company and collector.", "FORBIDDEN");
+    }
   }
   if (req.user.role === "COLLECTOR") {
     const ownCollectorId = await getCurrentProfileId("collectors", req.user.id);

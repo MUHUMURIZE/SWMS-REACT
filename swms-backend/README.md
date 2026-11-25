@@ -8,14 +8,14 @@ REST API built with Node.js, Express, PostgreSQL (`pg`), JWT, and bcrypt. The AP
 swms-backend/
   config/          PostgreSQL connection pool
   controllers/     Request handling and business rules
-  database/        MySQL schema
+  database/        PostgreSQL schema and incremental migrations
   docs/            Endpoint examples and response shapes
   middleware/      JWT authentication, RBAC, validation, error handling
   models/          SQL access for each domain entity
   docs/            Swagger/OpenAPI configuration and API documentation
   routes/          REST endpoint definitions
   scripts/         Initial administrator bootstrap
-  services/        Shared account creation transaction
+  services/        Transactional account, district, and fleet workflows
   tests/           Node test-runner tests
   utils/           Errors, async handling, transactions
   validation/      Request schemas
@@ -60,7 +60,7 @@ The API listens on `http://localhost:3000` by default. `GET /health` checks conn
 
 ## Database
 
-`database/schema.sql` creates PostgreSQL enum types, companies, users, representative/collector/household profiles, collections, notifications, and revoked-token tables. Profile `id` values are the resource IDs used by `/api/representatives/:id`, `/api/collectors/:id`, `/api/households/:id`, and `collectionId` relationships. `userId` is the authentication account ID.
+`database/schema.sql` creates the core PostgreSQL schema. `npm run migrate` applies additive operational, security, district-agreement, and fleet migrations. Profile `id` values are the resource IDs used by `/api/representatives/:id`, `/api/collectors/:id`, `/api/households/:id`, and `collectionId` relationships. `userId` is the authentication account ID.
 
 Relationship summary: each company has one Company Representative account; that representative manages the company's collectors, households, and collections. Each collector profile has households; collections link one household to its assigned collector; users own notifications and revoked-token records.
 
@@ -69,6 +69,8 @@ Relationship summary: each company has one Company Representative account; that 
 - Roles are `ADMIN`, `COMPANY_REPRESENTATIVE`, `COLLECTOR`, and `HOUSEHOLD`.
 - `POST /api/auth/register` is admin-only. Its body must include fields for the requested role: `companyId` for a representative, `representativeId` for a collector, and `collectorId` plus `address` for a household.
 - Each company has at most one Company Representative. That person can manage the company's collectors, households, and collections.
+- Company Representatives manage only their own vehicles; National Administrators have national visibility. Vehicle assignment requires the collector to belong to the same company and an active agreement for the collector's district. Ending that agreement automatically releases affected vehicles and preserves assignment history.
+- Collectors can view only their currently assigned vehicle when its district remains authorized. Maintenance and assignment histories are retained and paginated.
 - Collectors create, view, update, and delete only their households. Admins retain system-wide access.
 - Household self-service routes return only the authenticated household's data.
 - Creating or changing a collection creates a notification for the affected household.
@@ -76,6 +78,18 @@ Relationship summary: each company has one Company Representative account; that 
 - Deleting a representative or collector cascades through that account's lower-level household accounts and their collections. Company deletion is rejected while representatives are assigned.
 - Collection statuses are `pending`, `scheduled`, `in_progress`, `collected`, `completed`, `missed`, and `cancelled`. New collections may start only as `pending` or `scheduled`; subsequent transitions are enforced by the API and PostgreSQL migration.
 - Completing a collection atomically updates its state, empties the household bin, creates completion notifications, and writes the audit record. Repeated or concurrent completion requests do not repeat those side effects.
+
+## Fleet management
+
+- `GET /api/vehicles` lists vehicles visible to the authenticated administrator, company, or assigned collector.
+- `POST /api/vehicles` registers a vehicle. Administrators must supply `companyId`; representatives are always bound to their own company.
+- `PUT /api/vehicles/:id` updates registration, type, make/model, capacity, fuel, and expiry details.
+- `PUT /api/vehicles/:id/assignment` assigns an available vehicle to a company collector; `DELETE /api/vehicles/:id/assignment` releases it.
+- `PUT /api/vehicles/:id/status` sets `AVAILABLE`, `MAINTENANCE`, or `INACTIVE`. An assigned vehicle must first be released.
+- `GET /api/vehicles/:id/assignments` returns assignment history.
+- `GET/POST /api/vehicles/:id/maintenance` reads service history and schedules maintenance. `PUT /api/vehicles/:id/maintenance/:maintenanceId/status` completes or cancels a scheduled record.
+
+Fleet records do not represent live GPS telemetry. Hardware tracking, routing, and sensor ingestion are separate phases and must not be simulated as real data.
 
 ## Swagger API documentation and testing
 

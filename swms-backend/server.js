@@ -22,6 +22,9 @@ const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 const userModel = require("./models/userModel");
 const { trustedProxyHops } = require("./config/proxy");
 const { connectLoginRateLimiter } = require("./middleware/loginRateLimiter");
+const districtAgreementService = require("./services/districtAgreementService");
+const districtRoutes = require("./routes/districtRoutes");
+const vehicleRoutes = require("./routes/vehicleRoutes");
 
 const app = express();
 app.set("trust proxy", trustedProxyHops(process.env.TRUST_PROXY_HOPS));
@@ -76,6 +79,8 @@ if (swaggerEnabled) {
 app.use("/api/auth", authRoutes);
 app.use("/api", selfRoutes);
 app.use("/api/companies", companyRoutes);
+app.use("/api/districts", districtRoutes);
+app.use("/api/vehicles", vehicleRoutes);
 app.use("/api/representatives", representativeRoutes);
 app.use("/api/collectors", collectorRoutes);
 app.use("/api/households", householdRoutes);
@@ -95,12 +100,21 @@ const port = Number(process.env.PORT || 3000);
 if (require.main === module) {
   connectLoginRateLimiter()
     .then(() => {
+      districtAgreementService.expireDueAgreements().catch((error) => {
+        console.error("Could not expire district agreements:", error);
+      });
       const cleanup = setInterval(() => {
         userModel.purgeExpiredRevocations().catch((error) => {
           console.error("Could not purge expired revoked tokens:", error);
         });
       }, 60 * 60 * 1000);
       cleanup.unref();
+      const agreementCleanup = setInterval(() => {
+        districtAgreementService.expireDueAgreements().catch((error) => {
+          console.error("Could not expire district agreements:", error);
+        });
+      }, 60 * 60 * 1000);
+      agreementCleanup.unref();
       app.listen(port, () => {
         console.log(`SWMS API listening on port ${port}`);
       });

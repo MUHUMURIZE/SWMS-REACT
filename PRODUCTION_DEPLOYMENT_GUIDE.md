@@ -35,8 +35,9 @@ Never commit `.env` or deployment secrets.
 1. Take an encrypted PostgreSQL backup.
 2. Confirm migration history.
 3. Run `npm run migrate`.
-4. Verify migrations 002 through 006 are recorded.
-5. Smoke-test bin, collection, notification, report, and export queries.
+4. Verify migrations 002 through 010 are recorded.
+5. Confirm migration 008 created the district-agreement schema and history-preserving triggers, migration 009 created `company_has_active_district`, and migration 010 created fleet, assignment-history, and maintenance tables.
+6. Smoke-test district, agreement, vehicle assignment, maintenance, bin, collection, notification, report, and export queries.
 
 ## 4. Application startup
 
@@ -54,10 +55,12 @@ Create the bootstrap administrator with `npm run create-admin` only on the inten
 
 - Monitor `GET /health`.
 - Monitor PostgreSQL pool errors.
+- Monitor district agreement expiry job failures and administrator notifications.
 - Export audit logs to centralized and immutable storage.
 - Monitor HTTP 401, 403, 429, 409, and 500 rates.
 - Alert on revoked-token cleanup failures and migration failures.
 - Monitor collection overdue and bin-full metrics.
+- Monitor vehicle registration, insurance, and inspection expiries; maintenance reminder notifications are not yet implemented.
 
 ## 6. Security
 
@@ -83,5 +86,6 @@ Create the bootstrap administrator with `npm run create-admin` only on the inten
 - Run database migrations against a production-equivalent backup.
 - Verify all role-scoped report and export endpoints.
 - Verify completed collections empty bins and create notifications.
+- Verify district agreements remain pending until explicitly activated, ending an agreement leaves the district unassigned, and agreement history is retained.
 - Verify bin thresholds create exactly one threshold notification per crossing.
 - Verify CORS and Swagger are disabled or restricted as required.

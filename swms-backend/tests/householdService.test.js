@@ -2,7 +2,9 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { pool } = require("../config/db");
 const householdModel = require("../models/householdModel");
+const collectorModel = require("../models/collectorModel");
 const householdService = require("../services/householdService");
+const districtAuthorizationService = require("../services/districtAuthorizationService");
 
 test("collector household listing is scoped to the collector profile", async (t) => {
   t.mock.method(pool, "query", async () => ({ rows: [{ id: 14 }] }));
@@ -44,7 +46,15 @@ test("collector can update and delete their own household", async (t) => {
   t.mock.method(householdModel, "findById", async () => ({
     id: 22,
     collectorId: 14,
+    companyId: 5,
+    district: "Kayonza",
   }));
+  t.mock.method(collectorModel, "findById", async () => ({
+    id: 14,
+    companyId: 5,
+    district: "Kayonza",
+  }));
+  t.mock.method(districtAuthorizationService, "companyCanOperateInDistrict", async () => true);
   const update = t.mock.method(householdModel, "update", async () => ({ id: 22 }));
   const remove = t.mock.method(householdModel, "remove", async () => true);
   const collector = { id: 8, role: "COLLECTOR" };

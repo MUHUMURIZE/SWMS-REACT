@@ -116,3 +116,40 @@ test("scheduling endpoints remain reachable through the shared collections mount
   assert.equal(result.status, 200);
   assert.deepEqual(result.body.data, []);
 });
+
+test("district management APIs reject non-administrator roles", async (t) => {
+  const originalSecret = process.env.JWT_SECRET;
+  process.env.JWT_SECRET = "test-only-signing-secret-with-32-chars";
+  t.after(() => {
+    if (originalSecret === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = originalSecret;
+  });
+
+  t.mock.method(pool, "query", async (query) => {
+    if (query.includes("FROM users u")) {
+      return { rows: [{ id: 2, role: "COMPANY_REPRESENTATIVE", token_version: 0 }] };
+    }
+    return { rows: [] };
+  });
+  const token = jwt.sign(
+    { id: 2, role: "COMPANY_REPRESENTATIVE", tokenVersion: 0, jti: randomUUID() },
+    process.env.JWT_SECRET,
+    {
+      algorithm: "HS256",
+      issuer: process.env.JWT_ISSUER || "swms-api",
+      audience: process.env.JWT_AUDIENCE || "swms-api",
+      expiresIn: "5m",
+    }
+  );
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise((resolve) => server.once("listening", resolve));
+  t.after(() => new Promise((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  }));
+
+  const response = await request(server, "/api/districts", "GET", undefined, {
+    authorization: `Bearer ${token}`,
+  });
+  assert.equal(response.status, 403);
+  assert.equal(response.body.error.code, "REQUEST_ERROR");
+});

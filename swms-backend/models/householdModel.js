@@ -14,13 +14,22 @@ const selection = `SELECT h.id, h.user_id AS "userId", h.collector_id AS "collec
 exports.list = async (collectorId = null, pagination = { limit: 50, offset: 0 }) => {
   const result = collectorId === null
     ? await pool.query(`${selection} ORDER BY h.id LIMIT $1 OFFSET $2`, [pagination.limit, pagination.offset])
-    : await pool.query(`${selection} WHERE h.collector_id = $1 ORDER BY h.id LIMIT $2 OFFSET $3`, [collectorId, pagination.limit, pagination.offset]);
+    : await pool.query(
+      `${selection} WHERE h.collector_id = $1
+       AND company_has_active_district(r.company_id, h.district)
+       AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district))
+       ORDER BY h.id LIMIT $2 OFFSET $3`,
+      [collectorId, pagination.limit, pagination.offset]
+    );
   return result.rows;
 };
 
 exports.listByCompany = async (companyId, pagination = { limit: 50, offset: 0 }) => {
   const result = await pool.query(
-    `${selection} WHERE r.company_id = $1 ORDER BY h.id LIMIT $2 OFFSET $3`,
+    `${selection} WHERE r.company_id = $1
+     AND company_has_active_district(r.company_id, h.district)
+     AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district))
+     ORDER BY h.id LIMIT $2 OFFSET $3`,
     [companyId, pagination.limit, pagination.offset]
   );
   return result.rows;
