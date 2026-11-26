@@ -61,10 +61,10 @@ const navGroups: NavGroup[] = [
     items: [
       { to: '/households', label: 'Households', roles: ['ADMIN', 'COMPANY_REPRESENTATIVE', 'COLLECTOR'], icon: House },
       { to: '/bins', label: 'Smart Bins', roles: ['ADMIN', 'COMPANY_REPRESENTATIVE', 'COLLECTOR'], icon: Trash2 },
-      { to: '/devices', label: 'IoT Device Readiness', roles: ['ADMIN', 'COMPANY_REPRESENTATIVE'], icon: ShieldCheck },
+      { to: '/devices', label: 'Smart Bin Monitoring', roles: ['ADMIN', 'COMPANY_REPRESENTATIVE'], icon: ShieldCheck },
       { to: '/collections', label: 'Collections', roles: ['ADMIN', 'COMPANY_REPRESENTATIVE', 'COLLECTOR'], icon: Recycle },
       { to: '/scheduling', label: 'Scheduling', roles: ['ADMIN', 'COMPANY_REPRESENTATIVE', 'COLLECTOR'], icon: CalendarDays },
-      { to: '/gps', label: 'GPS Integration', roles: ['ADMIN', 'COMPANY_REPRESENTATIVE', 'COLLECTOR'], icon: Map },
+      { to: '/gps', label: 'GPS Tracking', roles: ['ADMIN', 'COMPANY_REPRESENTATIVE', 'COLLECTOR'], icon: Map },
     ],
   },
   {

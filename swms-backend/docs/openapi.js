@@ -8,6 +8,8 @@ const routeFiles = [
   { file: "companyRoutes.js", prefix: "/api/companies", tag: "Companies" },
   { file: "districtRoutes.js", prefix: "/api/districts", tag: "Districts" },
   { file: "vehicleRoutes.js", prefix: "/api/vehicles", tag: "Fleet Vehicles" },
+  { file: "trackingRoutes.js", prefix: "/api/tracking", tag: "GPS Tracking" },
+  { file: "iotRoutes.js", prefix: "/api/iot", tag: "Smart Bin IoT" },
   { file: "representativeRoutes.js", prefix: "/api/representatives", tag: "Representatives" },
   { file: "collectorRoutes.js", prefix: "/api/collectors", tag: "Collectors" },
   { file: "householdRoutes.js", prefix: "/api/households", tag: "Households" },
@@ -43,6 +45,8 @@ const guardRoles = {
   authorizeExportReader: ["ADMIN", "COMPANY_REPRESENTATIVE", "COLLECTOR"],
   authorizeVehicleReader: ["ADMIN", "COMPANY_REPRESENTATIVE", "COLLECTOR"],
   authorizeVehicleManager: ["ADMIN", "COMPANY_REPRESENTATIVE"],
+  authorizeTrackingReader: ["ADMIN", "COMPANY_REPRESENTATIVE", "COLLECTOR"],
+  authorizeDeviceManager: ["ADMIN", "COMPANY_REPRESENTATIVE"],
 };
 
 const bodyExamples = {
@@ -216,6 +220,24 @@ const summaries = {
   "GET /api/vehicles/{id}/maintenance": "View vehicle maintenance history",
   "POST /api/vehicles/{id}/maintenance": "Schedule vehicle maintenance",
   "PUT /api/vehicles/{id}/maintenance/{maintenanceId}/status": "Complete or cancel scheduled maintenance",
+  "POST /api/tracking/ingest": "Ingest a GPS location using a hardware device credential",
+  "GET /api/tracking/map": "Get current vehicle tracking data in the authorized operating scope",
+  "GET /api/tracking/devices": "List GPS devices managed within the caller's company scope",
+  "POST /api/tracking/devices": "Register an unassigned GPS device and issue its one-time credential",
+  "PUT /api/tracking/devices/{id}/vehicle": "Associate a GPS device with an authorized vehicle",
+  "POST /api/tracking/devices/{id}/rotate-credential": "Rotate a GPS device credential",
+  "DELETE /api/tracking/devices/{id}": "Revoke a GPS device credential",
+  "GET /api/tracking/vehicles/{vehicleId}/location": "Get a vehicle's latest known GPS location and tracking state",
+  "GET /api/tracking/vehicles/{vehicleId}/history": "Get paginated GPS location history for an authorized vehicle",
+  "POST /api/iot/ingest": "Ingest smart-bin telemetry using a hardware device credential",
+  "GET /api/iot/alerts": "List current full-bin, overflow, sensor-fault, and offline-device alerts",
+  "GET /api/iot/devices": "List smart-bin devices managed within the caller's company scope",
+  "POST /api/iot/devices": "Register an unassigned bin sensor and issue its one-time credential",
+  "PUT /api/iot/devices/{id}/bin": "Associate a sensor with an authorized waste bin",
+  "POST /api/iot/devices/{id}/rotate-credential": "Rotate a smart-bin device credential",
+  "DELETE /api/iot/devices/{id}": "Revoke a smart-bin device credential",
+  "GET /api/iot/bins/{binId}/latest": "Get the latest sensor reading and device state for an authorized bin",
+  "GET /api/iot/bins/{binId}/readings": "Get paginated sensor history for an authorized bin",
   "GET /api/me": "Get the current household profile",
   "PUT /api/me": "Update the current household profile",
   "GET /api/my-progress": "Get the current household's collection progress",
@@ -376,7 +398,7 @@ function getOperationRoles(routeCode, globalGuards) {
     return [...roles].map((role) => roleDescriptions[role]).join(" ");
   }
   return guardNames.has("authenticateToken")
-    ? "Any authenticated role."
+    ?     "Any authenticated role."
     : "Public endpoint.";
 }
 
@@ -853,29 +875,67 @@ function successResponse(method, routePath) {
       },
     };
   }
-  const status = method === "post" && !routePath.endsWith("/login") && !routePath.endsWith("/logout")
-    ? "201"
-    : "200";
+  const status = routePath === "/api/tracking/ingest" || routePath === "/api/iot/ingest"
+    ? "202"
+    : method === "post" && !routePath.endsWith("/login") && !routePath.endsWith("/logout")
+      ? "201"
+      : "200";
+  const responseSchema = resourceResponseSchema(method, routePath);
   return {
     description: status === "201" ? "Resource created successfully." : "Request completed successfully.",
     content: {
       "application/json": {
-        schema: { $ref: "#/components/schemas/SuccessResponse" },
-        example: exampleForSuccess(method, routePath),
+        schema: responseSchema
+          ? {
+            type: "object",
+            required: ["data"],
+            properties: { data: responseSchema },
+          }
+          : { $ref: "#/components/schemas/SuccessResponse" },
+        ...(!responseSchema && exampleForSuccess(method, routePath)
+          ? { example: exampleForSuccess(method, routePath) }
+          : {}),
       },
     },
   };
 }
 
-function errorResponses() {
+function resourceResponseSchema(method, routePath) {
+  const reference = (name) => ({ $ref: `#/components/schemas/${name}` });
+  const list = (name) => ({ type: "array", items: reference(name) });
+  const paths = {
+    "post /api/tracking/ingest": reference("DeviceIngestionReceipt"),
+    "get /api/tracking/map": list("VehicleMapEntry"),
+    "get /api/tracking/devices": list("ManagedDevice"),
+    "post /api/tracking/devices": reference("DeviceEnrollment"),
+    "put /api/tracking/devices/{id}/vehicle": reference("ManagedDevice"),
+    "post /api/tracking/devices/{id}/rotate-credential": reference("RotatedDeviceCredential"),
+    "get /api/tracking/vehicles/{vehicleId}/location": reference("LatestVehicleLocation"),
+    "get /api/tracking/vehicles/{vehicleId}/history": list("VehicleLocation"),
+    "post /api/iot/ingest": reference("DeviceIngestionReceipt"),
+    "get /api/iot/alerts": list("BinAlert"),
+    "get /api/iot/devices": list("ManagedDevice"),
+    "post /api/iot/devices": reference("DeviceEnrollment"),
+    "put /api/iot/devices/{id}/bin": reference("ManagedDevice"),
+    "post /api/iot/devices/{id}/rotate-credential": reference("RotatedDeviceCredential"),
+    "get /api/iot/bins/{binId}/latest": reference("LatestBinTelemetry"),
+    "get /api/iot/bins/{binId}/readings": list("BinTelemetryReading"),
+  };
+  return paths[`${method} ${routePath}`] || null;
+}
+
+function errorResponses(requireHttps = false) {
   const errors = {
     "400": ["Invalid request body or path parameter.", "VALIDATION_ERROR"],
-    "401": ["Authentication is required or the bearer token is invalid.", "UNAUTHENTICATED"],
-    "403": ["The authenticated role cannot perform this action.", "REQUEST_ERROR"],
+    "401": ["User or device authentication is missing, invalid, expired, or revoked.", "UNAUTHENTICATED"],
+    "403": ["The authenticated role or device type cannot perform this action.", "REQUEST_ERROR"],
     "404": ["The resource was not found or is outside the caller's scope.", "NOT_FOUND"],
     "409": ["The request conflicts with an existing record.", "CONFLICT"],
     "500": ["An unexpected server error occurred.", "INTERNAL_SERVER_ERROR"],
   };
+  if (requireHttps) {
+    errors["426"] = ["Device ingestion requires HTTPS.", "HTTPS_REQUIRED"];
+  }
   return Object.fromEntries(Object.entries(errors).map(([status, [description, code]]) => [
     status,
     {
@@ -975,6 +1035,11 @@ function generatePaths() {
           "/api/vehicles",
           "/api/vehicles/{id}/assignments",
           "/api/vehicles/{id}/maintenance",
+          "/api/tracking/devices",
+          "/api/tracking/vehicles/{vehicleId}/history",
+          "/api/iot/devices",
+          "/api/iot/alerts",
+          "/api/iot/bins/{binId}/readings",
           "/api/representatives",
           "/api/collectors",
           "/api/households",
@@ -1049,13 +1114,17 @@ function generatePaths() {
           },
         } : {}),
         responses: {
-          [method === "delete" ? "204" : method === "post"
-            && routePath !== "/api/auth/login" && routePath !== "/api/auth/logout" ? "201" : "200"]:
+          [method === "delete" ? "204" : routePath === "/api/tracking/ingest"
+            || routePath === "/api/iot/ingest" ? "202" : method === "post"
+              && routePath !== "/api/auth/login" && routePath !== "/api/auth/logout" ? "201" : "200"]:
             successResponse(method, openApiPath),
-          ...errorResponses(),
+          ...errorResponses(/\bauthenticateDevice\b/.test(routeCode)),
         },
       };
-      if (globalGuards.includes("authenticateToken")
+      if (/\bauthenticateDevice\b/.test(routeCode)) {
+        operation.security = [{ deviceCredential: [] }];
+        operation.description = `${summary} Device ingestion requires the enrolled device's X-Device-Credential header; user JWTs are not accepted. The credential is issued once at registration and stored hashed.`;
+      } else if (globalGuards.includes("authenticateToken")
         || /\bauthenticateToken\b/.test(routeCode)) {
         operation.security = [{ bearerAuth: [] }];
       } else {
@@ -1105,6 +1174,8 @@ const definition = {
     { name: "Companies", description: "Company records; each has at most one Company Representative." },
     { name: "Districts", description: "National districts and historically preserved company operating agreements." },
     { name: "Fleet Vehicles", description: "Company-owned vehicles, collector assignments, maintenance schedules, and service history." },
+    { name: "GPS Tracking", description: "Hardware-authenticated vehicle location ingestion and role-scoped tracking history." },
+    { name: "Smart Bin IoT", description: "Hardware-authenticated sensor telemetry, history, device status, and active alerts." },
     { name: "Representatives", description: "Company Representative accounts managed by administrators." },
     { name: "Collectors", description: "Collectors assigned to a company representative." },
     { name: "Households", description: "Households managed by their collector, company representative, or administrator." },
@@ -1127,8 +1198,179 @@ const definition = {
         bearerFormat: "JWT",
         description: "Paste the JWT access token returned by POST /api/auth/login. Swagger adds the Bearer prefix.",
       },
+      deviceCredential: {
+        type: "apiKey",
+        in: "header",
+        name: "X-Device-Credential",
+        description: "One-time-issued, rotatable hardware credential. Never place this secret in frontend code.",
+      },
     },
     schemas: {
+      DeviceEnrollment: {
+        type: "object",
+        required: ["id", "deviceCode", "deviceType", "status", "createdAt", "credential"],
+        properties: {
+          id: { type: "integer" },
+          deviceCode: { type: "string" },
+          deviceType: { type: "string", enum: ["GPS", "BIN"] },
+          status: { type: "string", enum: ["ACTIVE", "REVOKED"] },
+          createdAt: { type: "string", format: "date-time" },
+          credential: {
+            type: "string",
+            description: "Returned only at enrollment or rotation; store securely because it cannot be retrieved later.",
+          },
+        },
+      },
+      RotatedDeviceCredential: {
+        type: "object",
+        required: ["id", "credential"],
+        properties: {
+          id: { type: "integer" },
+          credential: { type: "string", description: "New credential returned once; the previous credential is invalidated." },
+        },
+      },
+      ManagedDevice: {
+        type: "object",
+        required: ["id", "deviceCode", "deviceType", "status", "trackingStatus"],
+        properties: {
+          id: { type: "integer" },
+          deviceCode: { type: "string" },
+          deviceType: { type: "string", enum: ["GPS", "BIN"] },
+          vehicleId: { type: "integer", nullable: true },
+          binId: { type: "integer", nullable: true },
+          status: { type: "string", enum: ["ACTIVE", "REVOKED"] },
+          trackingStatus: { type: "string", enum: ["ONLINE", "OFFLINE", "REVOKED"] },
+          lastCommunicationAt: { type: "string", format: "date-time", nullable: true },
+        },
+      },
+      DeviceIngestionReceipt: {
+        type: "object",
+        required: ["deviceId", "messageId", "receivedAt", "duplicate"],
+        properties: {
+          deviceId: { type: "integer" },
+          vehicleId: { type: "integer" },
+          binId: { type: "integer" },
+          messageId: { type: "string" },
+          receivedAt: { type: "string", format: "date-time" },
+          duplicate: { type: "boolean" },
+        },
+      },
+      GpsPosition: {
+        type: "object",
+        required: ["latitude", "longitude", "recordedAt", "receivedAt"],
+        properties: {
+          latitude: { type: "number", minimum: -90, maximum: 90 },
+          longitude: { type: "number", minimum: -180, maximum: 180 },
+          speed: { type: "number", nullable: true, description: "Kilometres per hour." },
+          heading: { type: "number", minimum: 0, maximum: 359.99, nullable: true, description: "Degrees clockwise from north." },
+          accuracy: { type: "number", minimum: 0, nullable: true, description: "Metres." },
+          recordedAt: { type: "string", format: "date-time" },
+          receivedAt: { type: "string", format: "date-time" },
+        },
+      },
+      VehicleLocation: {
+        type: "object",
+        required: ["id", "deviceId", "vehicleId", "messageId", "latitude", "longitude", "recordedAt", "receivedAt"],
+        properties: {
+          id: { type: "integer" },
+          deviceId: { type: "integer" },
+          vehicleId: { type: "integer" },
+          messageId: { type: "string" },
+          latitude: { type: "number", minimum: -90, maximum: 90 },
+          longitude: { type: "number", minimum: -180, maximum: 180 },
+          speed: { type: "number", nullable: true },
+          heading: { type: "number", minimum: 0, maximum: 359.99, nullable: true },
+          accuracy: { type: "number", minimum: 0, nullable: true },
+          recordedAt: { type: "string", format: "date-time" },
+          receivedAt: { type: "string", format: "date-time" },
+        },
+      },
+      VehicleMapEntry: {
+        type: "object",
+        required: ["vehicleId", "registrationNumber", "collectorId", "collectorName", "district",
+          "trackingStatus", "lastCommunicationAt", "deviceId", "messageId", "latitude", "longitude",
+          "speed", "heading", "accuracy", "recordedAt", "receivedAt"],
+        properties: {
+          vehicleId: { type: "integer" },
+          registrationNumber: { type: "string" },
+          companyId: { type: "integer" },
+          collectorId: { type: "integer", nullable: true },
+          collectorName: { type: "string", nullable: true },
+          district: { type: "string", nullable: true },
+          trackingStatus: { type: "string", enum: ["NOT_CONFIGURED", "ONLINE", "OFFLINE"] },
+          lastCommunicationAt: { type: "string", format: "date-time", nullable: true },
+          deviceId: { type: "integer", nullable: true },
+          messageId: { type: "string", nullable: true },
+          latitude: { type: "number", nullable: true },
+          longitude: { type: "number", nullable: true },
+          speed: { type: "number", nullable: true },
+          heading: { type: "number", nullable: true },
+          accuracy: { type: "number", nullable: true },
+          recordedAt: { type: "string", format: "date-time", nullable: true },
+          receivedAt: { type: "string", format: "date-time", nullable: true },
+        },
+      },
+      LatestVehicleLocation: {
+        type: "object",
+        required: ["vehicleId", "trackingStatus", "lastCommunicationAt", "location"],
+        properties: {
+          vehicleId: { type: "integer" },
+          trackingStatus: { type: "string", enum: ["NOT_CONFIGURED", "ONLINE", "OFFLINE"] },
+          lastCommunicationAt: { type: "string", format: "date-time", nullable: true },
+          location: { allOf: [{ $ref: "#/components/schemas/GpsPosition" }], nullable: true },
+        },
+      },
+      LatestBinSensorReading: {
+        type: "object",
+        required: ["fillLevel", "sensorStatus", "overflowDetected", "measuredAt", "receivedAt"],
+        properties: {
+          fillLevel: { type: "integer", minimum: 0, maximum: 100 },
+          batteryLevel: { type: "integer", minimum: 0, maximum: 100, nullable: true },
+          sensorStatus: { type: "string", enum: ["OK", "DEGRADED", "FAULT"] },
+          overflowDetected: { type: "boolean", nullable: true },
+          measuredAt: { type: "string", format: "date-time" },
+          receivedAt: { type: "string", format: "date-time" },
+        },
+      },
+      BinTelemetryReading: {
+        type: "object",
+        required: ["id", "deviceId", "binId", "messageId", "fillLevel", "sensorStatus", "measuredAt", "receivedAt"],
+        properties: {
+          id: { type: "integer" },
+          deviceId: { type: "integer" },
+          binId: { type: "integer" },
+          messageId: { type: "string" },
+          fillLevel: { type: "integer", minimum: 0, maximum: 100 },
+          batteryLevel: { type: "integer", minimum: 0, maximum: 100, nullable: true },
+          sensorStatus: { type: "string", enum: ["OK", "DEGRADED", "FAULT"] },
+          overflowDetected: { type: "boolean", nullable: true, description: "Only populated when supported by a dedicated overflow sensor." },
+          measuredAt: { type: "string", format: "date-time" },
+          receivedAt: { type: "string", format: "date-time" },
+        },
+      },
+      LatestBinTelemetry: {
+        type: "object",
+        required: ["binId", "deviceStatus", "lastCommunicationAt", "reading"],
+        properties: {
+          binId: { type: "integer" },
+          deviceStatus: { type: "string", enum: ["NOT_CONFIGURED", "ONLINE", "OFFLINE"] },
+          lastCommunicationAt: { type: "string", format: "date-time", nullable: true },
+          reading: { allOf: [{ $ref: "#/components/schemas/LatestBinSensorReading" }], nullable: true },
+        },
+      },
+      BinAlert: {
+        type: "object",
+        required: ["binId", "binCode", "alertType", "lastCommunicationAt", "measuredAt", "fillLevel"],
+        properties: {
+          binId: { type: "integer" },
+          binCode: { type: "string" },
+          district: { type: "string", nullable: true },
+          alertType: { type: "string", enum: ["FULL", "OVERFLOW", "SENSOR_FAULT", "DEVICE_OFFLINE"] },
+          lastCommunicationAt: { type: "string", format: "date-time", nullable: true },
+          measuredAt: { type: "string", format: "date-time", nullable: true },
+          fillLevel: { type: "integer", minimum: 0, maximum: 100, nullable: true },
+        },
+      },
       SuccessResponse: {
         type: "object",
         required: ["data"],

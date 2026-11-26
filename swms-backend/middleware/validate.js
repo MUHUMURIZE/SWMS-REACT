@@ -24,6 +24,10 @@ function validateBody(schema) {
         errors.push(`${field} must be a string.`);
         continue;
       }
+      if (rule.type === "boolean" && typeof value !== "boolean") {
+        errors.push(`${field} must be a boolean.`);
+        continue;
+      }
       if (rule.type === "number" && (typeof value !== "number" || !Number.isSafeInteger(value)
         || value < (rule.min === undefined ? 1 : rule.min)
         || value > (rule.max === undefined ? Number.MAX_SAFE_INTEGER : rule.max))) {

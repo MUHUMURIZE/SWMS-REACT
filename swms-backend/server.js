@@ -21,10 +21,17 @@ const { swaggerUi, swaggerSpec, swaggerOptions } = require("./docs/swagger");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 const userModel = require("./models/userModel");
 const { trustedProxyHops } = require("./config/proxy");
-const { connectLoginRateLimiter } = require("./middleware/loginRateLimiter");
+const {
+  apiRequests,
+  authRequests,
+  connectLoginRateLimiter,
+  closeRateLimitStore,
+} = require("./middleware/loginRateLimiter");
 const districtAgreementService = require("./services/districtAgreementService");
 const districtRoutes = require("./routes/districtRoutes");
 const vehicleRoutes = require("./routes/vehicleRoutes");
+const trackingRoutes = require("./routes/trackingRoutes");
+const iotRoutes = require("./routes/iotRoutes");
 
 const app = express();
 app.set("trust proxy", trustedProxyHops(process.env.TRUST_PROXY_HOPS));
@@ -51,10 +58,12 @@ app.use(cors({
     callback(null, allowedOrigins.includes(origin));
   },
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Audit-Reason"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Audit-Reason", "X-Device-Credential"],
   exposedHeaders: ["Content-Disposition"],
 }));
 app.use(express.json({ limit: "1mb" }));
+
+app.use("/api", apiRequests);
 
 app.get("/health", async (_req, res, next) => {
   try {
@@ -76,11 +85,13 @@ if (swaggerEnabled) {
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, swaggerOptions));
 }
 
-app.use("/api/auth", authRoutes);
+app.use("/api/auth", authRequests, authRoutes);
 app.use("/api", selfRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/districts", districtRoutes);
 app.use("/api/vehicles", vehicleRoutes);
+app.use("/api/tracking", trackingRoutes);
+app.use("/api/iot", iotRoutes);
 app.use("/api/representatives", representativeRoutes);
 app.use("/api/collectors", collectorRoutes);
 app.use("/api/households", householdRoutes);
@@ -115,9 +126,40 @@ if (require.main === module) {
         });
       }, 60 * 60 * 1000);
       agreementCleanup.unref();
-      app.listen(port, () => {
+      const server = app.listen(port, () => {
         console.log(`SWMS API listening on port ${port}`);
       });
+      let shuttingDown = false;
+      const shutdown = (signal) => {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        clearInterval(cleanup);
+        clearInterval(agreementCleanup);
+        console.log(`Received ${signal}; stopping the SWMS API.`);
+        const timeout = setTimeout(() => {
+          console.error("Graceful shutdown timed out.");
+          process.exit(1);
+        }, 30_000);
+        server.close(async (error) => {
+          if (error) {
+            console.error("HTTP server shutdown failed:", error);
+            process.exitCode = 1;
+          }
+          const results = await Promise.allSettled([
+            pool.end(),
+            closeRateLimitStore(),
+          ]);
+          for (const result of results) {
+            if (result.status === "rejected") {
+              console.error("A service failed to shut down cleanly:", result.reason);
+              process.exitCode = 1;
+            }
+          }
+          clearTimeout(timeout);
+        });
+      };
+      process.once("SIGTERM", () => shutdown("SIGTERM"));
+      process.once("SIGINT", () => shutdown("SIGINT"));
     })
     .catch((error) => {
       console.error("Could not connect the login rate limiter:", error);

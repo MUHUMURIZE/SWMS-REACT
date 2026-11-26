@@ -16,6 +16,8 @@ test("OpenAPI includes every route declared in the backend route files", () => {
       companyRoutes: "/api/companies",
       districtRoutes: "/api/districts",
       vehicleRoutes: "/api/vehicles",
+      trackingRoutes: "/api/tracking",
+      iotRoutes: "/api/iot",
       representativeRoutes: "/api/representatives",
       collectorRoutes: "/api/collectors",
       householdRoutes: "/api/households",
@@ -40,6 +42,57 @@ test("OpenAPI includes every route declared in the backend route files", () => {
   const documentedCount = Object.values(swaggerSpec.paths)
     .reduce((count, item) => count + Object.keys(item).length, 0);
   assert.equal(documentedCount, routeCount + 1, "All route operations and GET /health are documented");
+});
+
+test("OpenAPI documents hardware-authenticated GPS and IoT ingestion separately from user JWTs", () => {
+  assert.deepEqual(swaggerSpec.components.securitySchemes.deviceCredential, {
+    type: "apiKey",
+    in: "header",
+    name: "X-Device-Credential",
+    description: "One-time-issued, rotatable hardware credential. Never place this secret in frontend code.",
+  });
+  const gps = swaggerSpec.paths["/api/tracking/ingest"].post;
+  assert.deepEqual(gps.security, [{ deviceCredential: [] }]);
+  assert.equal(gps.responses["202"].description, "Request completed successfully.");
+  assert.equal(gps.responses["426"].content["application/json"].example.error.code, "HTTPS_REQUIRED");
+  assert.deepEqual(gps.requestBody.content["application/json"].schema.required,
+    ["messageId", "latitude", "longitude", "recordedAt"]);
+  const telemetry = swaggerSpec.paths["/api/iot/ingest"].post;
+  assert.deepEqual(telemetry.security, [{ deviceCredential: [] }]);
+  assert.deepEqual(telemetry.requestBody.content["application/json"].schema.required,
+    ["messageId", "fillLevel", "sensorStatus", "measuredAt"]);
+  const registration = swaggerSpec.paths["/api/iot/devices"].post;
+  assert.equal(
+    registration.responses["201"].content["application/json"].schema.properties.data.$ref,
+    "#/components/schemas/DeviceEnrollment"
+  );
+  assert.ok(swaggerSpec.components.schemas.DeviceEnrollment.properties.credential.description.includes("Returned only"));
+  assert.deepEqual(swaggerSpec.paths["/api/tracking/map"].get.security, [{ bearerAuth: [] }]);
+  assert.equal(
+    swaggerSpec.paths["/api/iot/bins/{binId}/latest"].get.responses["200"]
+      .content["application/json"].schema.properties.data.$ref,
+    "#/components/schemas/LatestBinTelemetry"
+  );
+  assert.ok(swaggerSpec.paths["/api/tracking/vehicles/{vehicleId}/history"].get);
+  assert.ok(swaggerSpec.paths["/api/iot/bins/{binId}/readings"].get);
+});
+
+test("OpenAPI component references resolve", () => {
+  const references = [];
+  function collect(value) {
+    if (Array.isArray(value)) {
+      value.forEach(collect);
+    } else if (value && typeof value === "object") {
+      if (typeof value.$ref === "string") references.push(value.$ref);
+      Object.values(value).forEach(collect);
+    }
+  }
+  collect(swaggerSpec);
+  for (const reference of references) {
+    const [root, section, name] = reference.replace(/^#\//, "").split("/");
+    assert.equal(root, "components");
+    assert.ok(swaggerSpec.components[section]?.[name], `Unresolved OpenAPI reference ${reference}`);
+  }
 });
 
 test("OpenAPI provides JWT authorization and validation-backed request schemas", () => {

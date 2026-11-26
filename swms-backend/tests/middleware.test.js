@@ -103,6 +103,37 @@ test("multiple path IDs and decimal fields are validated", async () => {
   );
 });
 
+test("GPS and telemetry ingestion validate sensor values and accept overflow only as a boolean", async () => {
+  const gps = {
+    body: {
+      messageId: "gps-1",
+      latitude: 46.5,
+      longitude: -72.25,
+      recordedAt: "2026-11-25T10:00:00Z",
+    },
+  };
+  await run(validateBody(schemas.gpsLocation), gps);
+  assert.equal(gps.body.recordedAt, "2026-11-25T10:00:00.000Z");
+  await assert.rejects(
+    run(validateBody(schemas.gpsLocation), {
+      body: { ...gps.body, latitude: 91 },
+    }),
+    (error) => error.statusCode === 400 && error.code === "VALIDATION_ERROR"
+  );
+  await assert.rejects(
+    run(validateBody(schemas.binTelemetry), {
+      body: {
+        messageId: "bin-1",
+        fillLevel: 101,
+        sensorStatus: "OK",
+        measuredAt: "2026-11-25T10:00:00Z",
+        overflowDetected: "yes",
+      },
+    }),
+    (error) => error.statusCode === 400 && error.details.length === 2
+  );
+});
+
 test("role guards distinguish administrators from household accounts", async () => {
   await run(authorizeAdmin, { user: { role: "ADMIN" } });
   await assert.rejects(

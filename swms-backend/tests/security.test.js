@@ -71,6 +71,17 @@ test("production login throttling refuses to start without shared Redis storage"
   assert.match(result.stderr, /REDIS_URL must be configured in production/);
 });
 
+test("production shared rate limiting requires a TLS Redis URL", () => {
+  const env = { ...process.env, NODE_ENV: "production", REDIS_URL: "redis://localhost:6379" };
+  const result = spawnSync(
+    process.execPath,
+    ["-e", "require('./middleware/loginRateLimiter')"],
+    { cwd: path.join(__dirname, ".."), env, encoding: "utf8" }
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /REDIS_URL must use rediss:\/\/ in production/);
+});
+
 test("JWTs use the configured issuer audience and HS256 algorithm", () => {
   const secret = "test-secret-that-is-at-least-32-characters";
   const token = jwt.sign(

@@ -18,6 +18,8 @@ const ProfilePage = lazy(() => import('./pages/ProfilePage').then((module) => ({
 const DistrictsPage = lazy(() => import('./pages/DistrictsPage').then((module) => ({ default: module.DistrictsPage })))
 const FleetPage = lazy(() => import('./pages/FleetPage').then((module) => ({ default: module.FleetPage })))
 const IntegrationStatusPage = lazy(() => import('./pages/IntegrationStatusPage').then((module) => ({ default: module.IntegrationStatusPage })))
+const GPSTrackingPage = lazy(() => import('./pages/GPSTrackingPage').then((module) => ({ default: module.GPSTrackingPage })))
+const IoTDevicesPage = lazy(() => import('./pages/IoTDevicesPage').then((module) => ({ default: module.IoTDevicesPage })))
 
 function AccessDeniedPage() {
   return (
@@ -56,11 +58,11 @@ function AppRoutes() {
             <Route element={<ProtectedRoute roles={['ADMIN', 'COMPANY_REPRESENTATIVE']} />}>
               <Route path="/collectors" element={<ResourcePage kind="collectors" />} />
               <Route path="/reports" element={<ReportsPage />} />
-              <Route path="/devices" element={<IntegrationStatusPage kind="devices" />} />
+              <Route path="/devices" element={<IoTDevicesPage />} />
             </Route>
             <Route element={<ProtectedRoute roles={['ADMIN', 'COMPANY_REPRESENTATIVE', 'COLLECTOR']} />}>
               <Route path="/fleet" element={<FleetPage />} />
-              <Route path="/gps" element={<IntegrationStatusPage kind="gps" />} />
+              <Route path="/gps" element={<GPSTrackingPage />} />
             </Route>
             <Route element={<ProtectedRoute roles={['ADMIN', 'COMPANY_REPRESENTATIVE', 'COLLECTOR']} />}>
               <Route path="/households" element={<ResourcePage kind="households" />} />

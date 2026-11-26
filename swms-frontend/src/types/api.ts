@@ -162,6 +162,75 @@ export interface Bin {
   collectorId?: number
   companyId?: number
   district?: string
+  sensorDeviceStatus?: 'NOT_CONFIGURED' | 'ONLINE' | 'OFFLINE'
+  lastCommunicationAt?: string | null
+  sensorFillLevel?: number | null
+  batteryLevel?: number | null
+  sensorStatus?: 'OK' | 'DEGRADED' | 'FAULT' | null
+  overflowDetected?: boolean | null
+  sensorMeasuredAt?: string | null
+}
+
+export interface VehicleTracking {
+  vehicleId: number
+  registrationNumber: string
+  companyId: number
+  collectorId: number | null
+  collectorName: string | null
+  district: string | null
+  trackingStatus: 'NOT_CONFIGURED' | 'ONLINE' | 'OFFLINE'
+  lastCommunicationAt: string | null
+  latitude: number | null
+  longitude: number | null
+  speed: number | null
+  heading: number | null
+  accuracy: number | null
+  recordedAt: string | null
+  receivedAt: string | null
+}
+
+export interface VehicleLocation {
+  id: number
+  deviceId: number
+  vehicleId: number
+  messageId: string
+  latitude: number
+  longitude: number
+  speed: number | null
+  heading: number | null
+  accuracy: number | null
+  recordedAt: string
+  receivedAt: string
+}
+
+export interface ManagedDevice {
+  id: number
+  deviceCode: string
+  deviceType: 'GPS' | 'BIN'
+  vehicleId: number | null
+  binId: number | null
+  status: 'ACTIVE' | 'REVOKED'
+  trackingStatus: 'ONLINE' | 'OFFLINE' | 'REVOKED'
+  lastCommunicationAt: string | null
+}
+
+export interface DeviceEnrollment {
+  id: number
+  deviceCode: string
+  deviceType: 'GPS' | 'BIN'
+  status: 'ACTIVE' | 'REVOKED'
+  createdAt: string
+  credential: string
+}
+
+export interface BinAlert {
+  binId: number
+  binCode: string
+  district: string
+  alertType: 'FULL' | 'OVERFLOW' | 'SENSOR_FAULT' | 'DEVICE_OFFLINE'
+  lastCommunicationAt: string | null
+  measuredAt: string | null
+  fillLevel: number | null
 }
 
 export type CollectionStatus =

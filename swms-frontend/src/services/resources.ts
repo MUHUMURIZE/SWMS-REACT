@@ -1,17 +1,22 @@
 import { api, unwrap } from '../lib/api'
 import type {
   Bin,
+  BinAlert,
   Collection,
   Collector,
   Company,
   District,
   DistrictAgreement,
+  DeviceEnrollment,
   Household,
   Notification,
+  ManagedDevice,
   Pagination,
   Representative,
   User,
   Vehicle,
+  VehicleLocation,
+  VehicleTracking,
   VehicleAssignment,
   VehicleMaintenance,
   VehicleStatus,
@@ -175,6 +180,91 @@ export const vehicleService = {
   ) => unwrap<VehicleMaintenance>(
     (await api.put(`/api/vehicles/${id}/maintenance/${maintenanceId}/status`, { status })).data,
   ),
+}
+
+export const trackingService = {
+  map: async () => unwrap<VehicleTracking[]>((await api.get('/api/tracking/map')).data),
+  latest: async (vehicleId: number) =>
+    unwrap<{
+      vehicleId: number
+      trackingStatus: VehicleTracking['trackingStatus']
+      lastCommunicationAt: string | null
+      location: Pick<VehicleTracking, 'latitude' | 'longitude' | 'speed' | 'heading' | 'accuracy' | 'recordedAt' | 'receivedAt'> | null
+    }>((await api.get(`/api/tracking/vehicles/${vehicleId}/location`)).data),
+  history: async (vehicleId: number, pagination: Pagination) =>
+    unwrap<VehicleLocation[]>((await api.get(`/api/tracking/vehicles/${vehicleId}/history`, {
+      params: params(pagination),
+    })).data),
+  devices: async (pagination: Pagination) =>
+    unwrap<ManagedDevice[]>((await api.get('/api/tracking/devices', {
+      params: params(pagination),
+    })).data),
+  registerDevice: async (deviceCode: string) =>
+    unwrap<DeviceEnrollment>(
+      (await api.post('/api/tracking/devices', { deviceCode })).data,
+    ),
+  associateDevice: async (deviceId: number, vehicleId: number) =>
+    unwrap<ManagedDevice>(
+      (await api.put(`/api/tracking/devices/${deviceId}/vehicle`, { resourceId: vehicleId })).data,
+    ),
+  rotateCredential: async (deviceId: number) =>
+    unwrap<{ id: number; credential: string }>(
+      (await api.post(`/api/tracking/devices/${deviceId}/rotate-credential`)).data,
+    ),
+  revokeDevice: async (deviceId: number) =>
+    (await api.delete(`/api/tracking/devices/${deviceId}`)).data,
+}
+
+export const iotService = {
+  devices: async (pagination: Pagination) =>
+    unwrap<ManagedDevice[]>((await api.get('/api/iot/devices', {
+      params: params(pagination),
+    })).data),
+  alerts: async (pagination: Pagination) =>
+    unwrap<BinAlert[]>((await api.get('/api/iot/alerts', {
+      params: params(pagination),
+    })).data),
+  latest: async (binId: number) =>
+    unwrap<{
+      binId: number
+      deviceStatus: 'NOT_CONFIGURED' | 'ONLINE' | 'OFFLINE'
+      lastCommunicationAt: string | null
+      reading: {
+        fillLevel: number
+        batteryLevel: number | null
+        sensorStatus: 'OK' | 'DEGRADED' | 'FAULT'
+        overflowDetected: boolean | null
+        measuredAt: string
+        receivedAt: string
+      } | null
+    }>((await api.get(`/api/iot/bins/${binId}/latest`)).data),
+  history: async (binId: number, pagination: Pagination) =>
+    unwrap<Array<{
+      id: number
+      binId: number
+      fillLevel: number
+      batteryLevel: number | null
+      sensorStatus: 'OK' | 'DEGRADED' | 'FAULT'
+      overflowDetected: boolean | null
+      measuredAt: string
+      receivedAt: string
+    }>>((await api.get(`/api/iot/bins/${binId}/readings`, {
+      params: params(pagination),
+    })).data),
+  registerDevice: async (deviceCode: string) =>
+    unwrap<DeviceEnrollment>(
+      (await api.post('/api/iot/devices', { deviceCode })).data,
+    ),
+  associateDevice: async (deviceId: number, binId: number) =>
+    unwrap<ManagedDevice>(
+      (await api.put(`/api/iot/devices/${deviceId}/bin`, { resourceId: binId })).data,
+    ),
+  rotateCredential: async (deviceId: number) =>
+    unwrap<{ id: number; credential: string }>(
+      (await api.post(`/api/iot/devices/${deviceId}/rotate-credential`)).data,
+    ),
+  revokeDevice: async (deviceId: number) =>
+    (await api.delete(`/api/iot/devices/${deviceId}`)).data,
 }
 
 export const householdService = {

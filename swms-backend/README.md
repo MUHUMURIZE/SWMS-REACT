@@ -54,9 +54,15 @@ The API listens on `http://localhost:3000` by default. `GET /health` checks conn
 ## Production configuration
 
 - Set `API_SERVER_URL` to the public API origin used in OpenAPI documentation and `CORS_ORIGINS` to the exact permitted frontend origins.
-- Set `REDIS_URL` for production. Login throttling uses Redis-backed shared storage, and the server waits for Redis before accepting requests; it does not fall back to per-process throttling in production.
+- Set `DB_SSL_MODE=verify-full` in production. PostgreSQL certificate verification cannot be disabled in production; optionally set `DB_SSL_CA_FILE` to the trusted PEM CA bundle path. Local development defaults to `disable`.
+- Set `REDIS_URL` to a TLS `rediss://` endpoint for production. API, authentication, and device-ingestion limits use Redis-backed shared storage, and the server waits for Redis before accepting requests; it does not fall back to per-process throttling in production.
+- Default limits are 600 general API requests per IP per 15 minutes, 60 authentication requests per IP per 15 minutes (plus 10 failed login attempts per IP/email per 15 minutes), 600 GPS messages per device per minute, 120 bin messages per device per minute, and 12,000 ingestion requests per IP per minute. Configure `API_RATE_LIMIT_PER_15_MINUTES`, `AUTH_RATE_LIMIT_PER_15_MINUTES`, `GPS_DEVICE_INGESTION_LIMIT_PER_MINUTE`, `IOT_DEVICE_INGESTION_LIMIT_PER_MINUTE`, and `DEVICE_INGESTION_IP_LIMIT_PER_MINUTE` to fit measured traffic. Device ingestion is excluded from the general API limit.
 - Set `TRUST_PROXY_HOPS` to the exact number of trusted reverse-proxy hops, or leave it at `0` when the API is directly exposed. Do not trust forwarded headers from untrusted clients.
+- Set frontend `VITE_API_BASE_URL` to the HTTPS API origin when building a deployment; the localhost fallback is for development only.
 - Keep Redis and database credentials in the deployment secret manager. Do not put production credentials in `.env.example` or commit them.
+- `GET /health` checks PostgreSQL only. On `SIGTERM`/`SIGINT`, the API stops accepting requests, drains active HTTP work, then closes PostgreSQL and Redis; allow up to 30 seconds for shutdown.
+
+See the [production deployment guide](../PRODUCTION_DEPLOYMENT_GUIDE.md) for environment separation, backup/restore, HTTPS, monitoring, and release procedures. Password recovery endpoints are not currently implemented.
 
 ## Database
 

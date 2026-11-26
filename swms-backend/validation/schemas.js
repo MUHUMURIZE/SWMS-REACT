@@ -178,3 +178,29 @@ exports.vehicleMaintenanceCreate = {
 exports.vehicleMaintenanceStatus = {
   status: { type: "enum", required: true, values: ["COMPLETED", "CANCELLED"] },
 };
+exports.gpsDeviceCreate = {
+  deviceCode: { type: "string", required: true, minLength: 1, maxLength: 128 },
+};
+exports.deviceAssociation = {
+  resourceId: id(true),
+};
+exports.gpsLocation = {
+  messageId: { type: "string", required: true, minLength: 1, maxLength: 128 },
+  latitude: { type: "decimal", required: true, min: -90, max: 90, scale: 7 },
+  longitude: { type: "decimal", required: true, min: -180, max: 180, scale: 7 },
+  speed: { type: "decimal", min: 0, max: 500, scale: 2 },
+  heading: { type: "decimal", min: 0, max: 359.99, scale: 2 },
+  accuracy: { type: "decimal", min: 0, max: 999999, scale: 2 },
+  recordedAt: { type: "datetime", required: true },
+};
+exports.binDeviceCreate = {
+  deviceCode: { type: "string", required: true, minLength: 1, maxLength: 128 },
+};
+exports.binTelemetry = {
+  messageId: { type: "string", required: true, minLength: 1, maxLength: 128 },
+  fillLevel: { type: "number", required: true, min: 0, max: 100 },
+  batteryLevel: { type: "number", min: 0, max: 100 },
+  sensorStatus: { type: "enum", required: true, values: ["OK", "DEGRADED", "FAULT"] },
+  overflowDetected: { type: "boolean" },
+  measuredAt: { type: "datetime", required: true },
+};

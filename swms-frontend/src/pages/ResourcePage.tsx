@@ -75,7 +75,19 @@ const allowedColumns: Record<ResourceKind, string[]> = {
   representatives: ['id', 'fullName', 'email', 'companyName', 'district', 'sector'],
   collectors: ['id', 'fullName', 'email', 'representativeName', 'district', 'sector'],
   households: ['id', 'fullName', 'email', 'address', 'district', 'sector', 'collectorName'],
-  bins: ['id', 'binCode', 'householdName', 'capacity', 'fillLevel', 'status'],
+  bins: [
+    'id',
+    'binCode',
+    'householdName',
+    'capacity',
+    'fillLevel',
+    'sensorFillLevel',
+    'sensorDeviceStatus',
+    'sensorStatus',
+    'batteryLevel',
+    'sensorMeasuredAt',
+    'status',
+  ],
   collections: ['id', 'householdName', 'collectorName', 'scheduledAt', 'status', 'notes'],
 }
 
@@ -120,6 +132,11 @@ function formatColumn(column: string) {
     id: 'ID',
     binCode: 'Bin code',
     fillLevel: 'Fill level',
+    sensorFillLevel: 'Sensor fill level',
+    sensorDeviceStatus: 'Sensor connection',
+    sensorStatus: 'Sensor health',
+    sensorMeasuredAt: 'Last sensor reading',
+    batteryLevel: 'Battery level',
     householdId: 'Household',
     collectorId: 'Collector',
     representativeId: 'Representative',
@@ -145,14 +162,19 @@ function formatValue(value: unknown) {
 }
 
 function ResourceCell({ column, value }: { column: string; value: unknown }) {
-  if (column === 'status' || column === 'assignmentStatus') {
+  if (column === 'status' || column === 'assignmentStatus'
+    || column === 'sensorDeviceStatus' || column === 'sensorStatus') {
     return typeof value === 'string' ? <StatusBadge status={value} /> : <span>—</span>
   }
-  if (column === 'fillLevel' && typeof value === 'number') {
+  if (column === 'sensorFillLevel' && value == null) {
+    return <span className="text-slate-400">No sensor reading</span>
+  }
+  if ((column === 'fillLevel' || column === 'sensorFillLevel') && typeof value === 'number') {
     return (
       <div className="min-w-28">
         <div className="mb-1 flex justify-between text-xs font-medium text-slate-600">
-          <span>{value}%</span><span className="text-slate-400">recorded</span>
+          <span>{value}%</span>
+          <span className="text-slate-400">{column === 'sensorFillLevel' ? 'sensor' : 'recorded'}</span>
         </div>
         <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
           <div className={`h-full rounded-full ${value >= 80 ? 'bg-rose-500' : value >= 55 ? 'bg-amber-500' : 'bg-emerald-600'}`}

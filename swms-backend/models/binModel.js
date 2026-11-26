@@ -1,36 +1,59 @@
 const { pool } = require("../config/db");
+const onlineWindowSeconds = Number.isSafeInteger(Number(process.env.DEVICE_ONLINE_WINDOW_SECONDS))
+  && Number(process.env.DEVICE_ONLINE_WINDOW_SECONDS) > 0
+  ? Number(process.env.DEVICE_ONLINE_WINDOW_SECONDS)
+  : 300;
 
 const selection = `SELECT b.id, b.household_id AS "householdId", b.bin_code AS "binCode",
   b.capacity, b.fill_level AS "fillLevel", b.status,
   b.created_at AS "createdAt", b.updated_at AS "updatedAt",
   u.full_name AS "householdName", h.collector_id AS "collectorId",
-  r.company_id AS "companyId", h.district
+  r.company_id AS "companyId", h.district,
+  CASE WHEN sensor_device.id IS NULL THEN 'NOT_CONFIGURED'
+    WHEN sensor_device.last_communication_at >= CURRENT_TIMESTAMP - ($1 * INTERVAL '1 second')
+      THEN 'ONLINE' ELSE 'OFFLINE' END AS "sensorDeviceStatus",
+  sensor_device.last_communication_at AS "lastCommunicationAt",
+  sensor.fill_level::integer AS "sensorFillLevel", sensor.battery_level AS "batteryLevel",
+  sensor.sensor_status AS "sensorStatus", sensor.overflow_detected AS "overflowDetected",
+  sensor.measured_at AS "sensorMeasuredAt"
   FROM waste_bins b
   JOIN households h ON h.id = b.household_id
   JOIN users u ON u.id = h.user_id
   JOIN collectors c ON c.id = h.collector_id
-  JOIN representatives r ON r.id = c.representative_id`;
+  JOIN representatives r ON r.id = c.representative_id
+  LEFT JOIN resource_devices sensor_device ON sensor_device.bin_id = b.id
+    AND sensor_device.device_type = 'BIN' AND sensor_device.status = 'ACTIVE'
+  LEFT JOIN LATERAL (
+    SELECT fill_level, battery_level, sensor_status, overflow_detected, measured_at
+    FROM bin_sensor_readings WHERE bin_id = b.id
+    ORDER BY measured_at DESC, id DESC LIMIT 1
+  ) sensor ON TRUE`;
 
 exports.list = async (scope = {}, pagination = { limit: 50, offset: 0 }) => {
   let query = selection;
   let values = [];
   if (scope.collectorId !== undefined) {
-    query += ` WHERE h.collector_id = $1 AND company_has_active_district(r.company_id, h.district)
+    query += ` WHERE h.collector_id = $2 AND company_has_active_district(r.company_id, h.district)
       AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district))`;
-    values = [scope.collectorId];
+    values = [onlineWindowSeconds, scope.collectorId];
   } else if (scope.companyId !== undefined) {
-    query += ` WHERE r.company_id = $1 AND company_has_active_district(r.company_id, h.district)
+    query += ` WHERE r.company_id = $2 AND company_has_active_district(r.company_id, h.district)
       AND LOWER(BTRIM(c.district)) = LOWER(BTRIM(h.district))`;
-    values = [scope.companyId];
+    values = [onlineWindowSeconds, scope.companyId];
+  } else {
+    values = [onlineWindowSeconds];
   }
   values.push(pagination.limit, pagination.offset);
-  const result = await pool.query(`${query} ORDER BY b.id LIMIT $${values.length - 1} OFFSET $${values.length}`, values);
+  const result = await pool.query(
+    `${query} ORDER BY b.id LIMIT $${values.length - 1} OFFSET $${values.length}`,
+    values
+  );
   return result.rows;
 };
 
 exports.listFull = async (scope = {}, pagination = { limit: 50, offset: 0 }) => {
   let query = selection + " WHERE b.status IN ('HIGH', 'FULL')";
-  const values = [];
+  const values = [onlineWindowSeconds];
   if (scope.collectorId !== undefined) {
     values.push(scope.collectorId);
     query += ` AND h.collector_id = $${values.length}
@@ -48,12 +71,15 @@ exports.listFull = async (scope = {}, pagination = { limit: 50, offset: 0 }) => 
 };
 
 exports.findById = async (id, executor = pool) => {
-  const result = await executor.query(`${selection} WHERE b.id = $1`, [id]);
+  const result = await executor.query(`${selection} WHERE b.id = $2`, [onlineWindowSeconds, id]);
   return result.rows[0] || null;
 };
 
 exports.findByHouseholdId = async (householdId) => {
-  const result = await pool.query(`${selection} WHERE b.household_id = $1`, [householdId]);
+  const result = await pool.query(
+    `${selection} WHERE b.household_id = $2`,
+    [onlineWindowSeconds, householdId]
+  );
   return result.rows[0] || null;
 };
 

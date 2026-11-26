@@ -16,7 +16,7 @@ This migration keeps all API paths, JSON fields, role rules, and collection work
 
 ## PostgreSQL setup
 
-Install a supported PostgreSQL server and `psql`, then create the database (the mixed-case name must be quoted):
+Install PostgreSQL 14 or newer and the matching `psql`, `pg_dump`, and `pg_restore` client tools. Use a separate database and credentials for each environment. The mixed-case example name must be quoted:
 
 ```sql
 CREATE DATABASE "SWMS_db";
@@ -33,19 +33,81 @@ psql -U postgres -d "SWMS_db" -c "\dT+"
 psql -U postgres -d "SWMS_db" -c "SELECT typname, enumlabel FROM pg_type JOIN pg_enum ON pg_enum.enumtypid = pg_type.oid WHERE typname IN ('user_role', 'collection_status') ORDER BY typname, enumsortorder;"
 ```
 
-Configure `.env` locally using `.env.example` as a template. The required names are `DB_USER`, `DB_HOST`, `DB_NAME`, `DB_PASS`, and `DB_PORT`. Keep real database passwords and JWT signing keys out of source control. `JWT_SECRET` must be a randomly generated value of at least 32 characters.
+Configure local `.env` using `.env.example` as a template. Production requires `DB_SSL_MODE=verify-full`; an optional `DB_SSL_CA_FILE` points to a trusted PEM CA bundle. Production refuses TLS disablement. Keep database passwords and JWT signing keys in a secret manager, not source control.
 
-For an existing PostgreSQL database, back it up and apply the additive, idempotent location migration without rerunning the initial schema:
+## Baseline schema and incremental migrations
+
+### New, empty database
+
+The baseline `database/schema.sql` creates the core schema. The migration runner does not apply this baseline automatically. From `swms-backend`, initialize only a newly created, empty database as follows:
 
 ```powershell
-psql -U postgres -d "SWMS_db" -f database\migrations\003_add_location_fields.sql
+psql -U postgres -d "SWMS_db" -v ON_ERROR_STOP=1 -f database\schema.sql
+npm run migrate
 ```
 
-Check connectivity, create the initial administrator, and run tests:
+Do not run the baseline against a live database as a substitute for incremental migrations.
+
+### Existing SWMS database
+
+1. Confirm the target database and environment before connecting.
+2. Take and verify a restorable backup.
+3. Run `npm run migrate` from `swms-backend` using that environment's connection configuration. Do not rerun `database/schema.sql`.
+4. The runner takes a PostgreSQL advisory lock and applies unapplied SQL files in lexical order. The complete incremental migration order is:
+
+   1. `002_household_exactly_one_bin.sql`
+   2. `003_add_location_fields.sql`
+   3. `004_security_and_integrity.sql`
+   4. `005_operational_features.sql`
+   5. `006_bin_fill_history.sql`
+   6. `007_collection_lifecycle_initial_status.sql`
+   7. `008_district_company_agreements.sql`
+   8. `009_company_district_authorization.sql`
+   9. `010_fleet_management.sql`
+   10. `011_gps_iot_devices.sql`
+
+Each numbered migration uses a transaction. The baseline schema is not represented by a numbered entry in `schema_migrations`; the expected ledger contains all ten numbered migrations after initialization.
+
+### Verify migration state
+
+Connect using the same environment credentials used by the application and verify the database identity before reporting status:
+
+```sql
+SELECT current_database(), current_setting('server_version');
+SELECT name, applied_at FROM schema_migrations ORDER BY name;
+SELECT COUNT(*) AS migration_count,
+       MAX(name) AS latest_migration
+FROM schema_migrations;
+```
+
+For the complete current schema, expect 10 rows and `011_gps_iot_devices.sql` as the latest migration. Also verify the GPS/IoT tables and indexes exist, then run application smoke tests. Do not copy development/test migration status into staging or production; query each environment independently.
+
+### Rollback and recovery limitations
+
+There are no automatic down migrations. Do not manually drop tables, reverse triggers, or delete migration-ledger rows to simulate a rollback. For a failed migration, stop the release, retain logs, inspect transaction state, and prepare a reviewed forward-fix. If recovery requires reverting data/schema, restore the pre-release backup or provider PITR into a **new** database, validate schema/data and role scopes there, then perform a controlled application cutover. Keep the original database untouched until the recovery is accepted. Practice this process on a production-equivalent copy before release.
+
+### Fresh migration and backup/restore test
+
+With a non-production PostgreSQL server listening on loopback, PostgreSQL client tools installed (or `PG_BIN_DIR` set), and a role allowed to create/drop databases, run the isolated verification script:
 
 ```powershell
-npm install
+$env:SWMS_RECOVERY_TEST_CONFIRM = "YES"
+$env:PG_BIN_DIR = "C:\Program Files\PostgreSQL\18\bin"
+node scripts\verifyDatabaseRecovery.js
+Remove-Item Env:\SWMS_RECOVERY_TEST_CONFIRM
+Remove-Item Env:\PG_BIN_DIR
+```
+
+The script requires explicit opt-in, rejects production mode and non-loopback hosts, creates two uniquely named databases containing a synthetic fixture only, applies the baseline and all numbered migrations, dumps/restores with `pg_dump`/`pg_restore`, verifies the migration ledger and fixture, and removes only those temporary databases and its temporary archive. This local test does not verify production backup encryption, retention, access controls, or managed PITR.
+
+## Application checks after migration
+
+Check database connectivity and run the test suites before controlled administrator bootstrap and startup:
+
+```powershell
 npm test
+npm run test:security
+npm run test:integration
 npm run create-admin
 npm start
 ```
