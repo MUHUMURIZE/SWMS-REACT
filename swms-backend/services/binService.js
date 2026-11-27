@@ -6,6 +6,7 @@ const districtAuthorizationService = require("./districtAuthorizationService");
 const AppError = require("../utils/AppError");
 const notificationModel = require("../models/notificationModel");
 const notificationService = require("./notificationService");
+const { validateGeoInput } = require("../utils/geo");
 
 async function collectorIdFor(userId) {
   const result = await pool.query("SELECT id FROM collectors WHERE user_id = $1", [userId]);
@@ -73,6 +74,7 @@ exports.list = async (user, fullOnly = false, pagination = { limit: 50, offset: 
 exports.get = (user, id) => accessibleBin(user, id);
 
 exports.create = async (user, data) => {
+  const geo = validateGeoInput(data);
   const household = await householdModel.findById(data.householdId);
   if (!household) throw new AppError(404, "Household not found.", "NOT_FOUND");
   if (user.role === "COLLECTOR") {
@@ -96,7 +98,7 @@ exports.create = async (user, data) => {
     }
   }
   try {
-    return await binModel.create(data);
+    return await binModel.create(geo ? { ...data, ...geo } : data);
   } catch (error) {
     if (error.code === "23505") {
       throw new AppError(409, "The household already has a bin or the bin code is already in use.", "CONFLICT");
@@ -110,14 +112,21 @@ exports.create = async (user, data) => {
 
 exports.update = async (user, id, data) => {
   await accessibleBin(user, id);
+  const geo = validateGeoInput(data);
   try {
-    return await binModel.update(id, data);
+    return await binModel.update(id, geo ? { ...data, ...geo } : data);
   } catch (error) {
     if (error.code === "23505") {
       throw new AppError(409, "The bin code is already in use.", "CONFLICT");
     }
     throw error;
   }
+};
+
+exports.updateLocation = async (user, id, data) => {
+  await accessibleBin(user, id);
+  const geo = validateGeoInput(data);
+  return binModel.updateLocation(id, geo);
 };
 
 exports.remove = async (user, id) => {
@@ -152,7 +161,22 @@ exports.myBin = async (userId) => {
   const bin = await binModel.findByHouseholdId(household.id);
   if (!bin) throw new AppError(404, "Waste bin not found.", "NOT_FOUND");
   const { id, householdId, binCode, capacity, fillLevel, status, createdAt, updatedAt } = bin;
-  return { id, householdId, binCode, capacity, fillLevel, status, createdAt, updatedAt };
+  return {
+    id,
+    householdId,
+    binCode,
+    capacity,
+    fillLevel,
+    status,
+    createdAt,
+    updatedAt,
+    ...(bin.latitude !== undefined ? {
+      latitude: bin.latitude,
+      longitude: bin.longitude,
+      locationAccuracy: bin.locationAccuracy ?? null,
+      locationCapturedAt: bin.locationCapturedAt ?? null,
+    } : {}),
+  };
 };
 
 exports.statistics = async (role, userId) => {

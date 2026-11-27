@@ -39,7 +39,7 @@ function validateBody(schema) {
       if (rule.type === "decimal" && (typeof value !== "number" || !Number.isFinite(value)
         || value < (rule.min === undefined ? Number.MIN_VALUE : rule.min)
         || value > (rule.max === undefined ? Number.MAX_VALUE : rule.max)
-        || (rule.scale !== undefined && !Number.isInteger(value * (10 ** rule.scale))))) {
+        || (rule.scale !== undefined && Number(value.toFixed(rule.scale)) !== value))) {
         errors.push(`${field} must be a number within the allowed range.`);
         continue;
       }

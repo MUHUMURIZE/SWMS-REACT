@@ -147,6 +147,10 @@ export interface Household {
   sector?: string
   cell?: string
   village?: string
+  latitude?: number | null
+  longitude?: number | null
+  locationAccuracy?: number | null
+  locationCapturedAt?: string | null
   collectorName?: string
   companyId?: number
 }
@@ -159,10 +163,16 @@ export interface Bin {
   fillLevel: number
   status: 'EMPTY' | 'LOW' | 'MEDIUM' | 'HIGH' | 'FULL' | 'MAINTENANCE'
   householdName?: string
+  householdAddress?: string
   collectorId?: number
   companyId?: number
   district?: string
+  latitude?: number | null
+  longitude?: number | null
+  locationAccuracy?: number | null
+  locationCapturedAt?: string | null
   sensorDeviceStatus?: 'NOT_CONFIGURED' | 'ONLINE' | 'OFFLINE'
+  sensorIsSimulated?: boolean
   lastCommunicationAt?: string | null
   sensorFillLevel?: number | null
   batteryLevel?: number | null
@@ -179,12 +189,14 @@ export interface VehicleTracking {
   collectorName: string | null
   district: string | null
   trackingStatus: 'NOT_CONFIGURED' | 'ONLINE' | 'OFFLINE'
+  isSimulated?: boolean
   lastCommunicationAt: string | null
   latitude: number | null
   longitude: number | null
   speed: number | null
   heading: number | null
   accuracy: number | null
+  locationIsSimulated?: boolean
   recordedAt: string | null
   receivedAt: string | null
 }
@@ -199,6 +211,7 @@ export interface VehicleLocation {
   speed: number | null
   heading: number | null
   accuracy: number | null
+  isSimulated?: boolean
   recordedAt: string
   receivedAt: string
 }
@@ -207,6 +220,7 @@ export interface ManagedDevice {
   id: number
   deviceCode: string
   deviceType: 'GPS' | 'BIN'
+  isSimulated?: boolean
   vehicleId: number | null
   binId: number | null
   status: 'ACTIVE' | 'REVOKED'
@@ -218,6 +232,7 @@ export interface DeviceEnrollment {
   id: number
   deviceCode: string
   deviceType: 'GPS' | 'BIN'
+  isSimulated?: boolean
   status: 'ACTIVE' | 'REVOKED'
   createdAt: string
   credential: string
@@ -228,9 +243,40 @@ export interface BinAlert {
   binCode: string
   district: string
   alertType: 'FULL' | 'OVERFLOW' | 'SENSOR_FAULT' | 'DEVICE_OFFLINE'
+  isSimulated?: boolean
   lastCommunicationAt: string | null
   measuredAt: string | null
   fillLevel: number | null
+}
+
+export interface BinTelemetryReading {
+  id: number
+  deviceId: number
+  binId: number
+  messageId: string
+  fillLevel: number
+  batteryLevel: number | null
+  sensorStatus: 'OK' | 'DEGRADED' | 'FAULT'
+  overflowDetected: boolean | null
+  isSimulated?: boolean
+  measuredAt: string
+  receivedAt: string
+}
+
+export interface LatestBinTelemetry {
+  binId: number
+  deviceStatus: 'NOT_CONFIGURED' | 'ONLINE' | 'OFFLINE'
+  isSimulated?: boolean
+  lastCommunicationAt: string | null
+  reading: {
+    fillLevel: number
+    batteryLevel: number | null
+    sensorStatus: 'OK' | 'DEGRADED' | 'FAULT'
+    overflowDetected: boolean | null
+    isSimulated?: boolean
+    measuredAt: string
+    receivedAt: string
+  } | null
 }
 
 export type CollectionStatus =

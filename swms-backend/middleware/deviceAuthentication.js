@@ -14,13 +14,16 @@ async function authenticateDevice(req, _res, next) {
 
     const credentialHash = createHash("sha256").update(credential).digest("hex");
     const result = await pool.query(
-      `SELECT id, device_type AS "deviceType"
+      `SELECT id, device_type AS "deviceType", is_simulated AS "isSimulated"
        FROM resource_devices
        WHERE credential_hash = $1 AND status = 'ACTIVE'`,
       [credentialHash]
     );
     if (!result.rows[0]) {
       throw new AppError(401, "The device credential is invalid or revoked.", "UNAUTHENTICATED");
+    }
+    if (process.env.NODE_ENV === "production" && result.rows[0].isSimulated) {
+      throw new AppError(403, "Simulated devices are disabled in production.", "FORBIDDEN");
     }
     req.device = result.rows[0];
     next();

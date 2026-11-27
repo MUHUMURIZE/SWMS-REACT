@@ -157,6 +157,7 @@ const bodyExamples = {
   },
   "POST /api/bins": { householdId: 1, binCode: "BIN-0001", capacity: 120 },
   "PUT /api/bins/{id}": { capacity: 180 },
+  "PUT /api/bins/{id}/location": { latitude: -1.9441, longitude: 30.0619, locationAccuracy: 5.5 },
   "PUT /api/bins/{id}/progress": { fillLevel: 85 },
   "PUT /api/households/{id}": {
     address: "12 Main St",
@@ -250,6 +251,7 @@ const summaries = {
   "PUT /api/collections/{id}/status": "Update a collection's status",
   "GET /api/bins/full": "List bins that are high or full",
   "DELETE /api/bins/{id}": "Delete a bin (rejected while its household exists)",
+  "PUT /api/bins/{id}/location": "Record or update a waste bin's stored geographic location",
   "PUT /api/bins/{id}/progress": "Update a bin's fill level",
   "PUT /api/bins/{id}/empty": "Mark a bin as emptied",
   "GET /api/my-bin": "Get the authenticated household's bin and fill progress",
@@ -645,6 +647,7 @@ function exampleForSuccess(method, routePath) {
     return { data: { id, householdId, binCode, capacity, fillLevel, status, createdAt, updatedAt } };
   }
   if (routePath === "/api/bins/{id}"
+    || routePath === "/api/bins/{id}/location"
     || routePath === "/api/bins/{id}/progress" || routePath === "/api/bins/{id}/empty") {
     return { data: routePath.endsWith("/empty") ? { ...binExample, fillLevel: 0, status: "EMPTY" } : binExample };
   }
@@ -1213,6 +1216,7 @@ const definition = {
           id: { type: "integer" },
           deviceCode: { type: "string" },
           deviceType: { type: "string", enum: ["GPS", "BIN"] },
+          isSimulated: { type: "boolean" },
           status: { type: "string", enum: ["ACTIVE", "REVOKED"] },
           createdAt: { type: "string", format: "date-time" },
           credential: {
@@ -1236,6 +1240,7 @@ const definition = {
           id: { type: "integer" },
           deviceCode: { type: "string" },
           deviceType: { type: "string", enum: ["GPS", "BIN"] },
+          isSimulated: { type: "boolean" },
           vehicleId: { type: "integer", nullable: true },
           binId: { type: "integer", nullable: true },
           status: { type: "string", enum: ["ACTIVE", "REVOKED"] },
@@ -1253,6 +1258,7 @@ const definition = {
           messageId: { type: "string" },
           receivedAt: { type: "string", format: "date-time" },
           duplicate: { type: "boolean" },
+          isSimulated: { type: "boolean" },
         },
       },
       GpsPosition: {

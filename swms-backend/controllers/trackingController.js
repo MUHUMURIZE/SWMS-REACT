@@ -1,7 +1,11 @@
 const trackingService = require("../services/deviceService");
 
 exports.registerGpsDevice = async (req, res) => {
-  res.status(201).json({ data: await trackingService.registerDevice(req.user, "GPS", req.body.deviceCode) });
+  res.status(201).json({
+    data: await trackingService.registerDevice(req.user, "GPS", req.body.deviceCode, {
+      isSimulated: req.body.isSimulated,
+    }),
+  });
 };
 
 exports.listGpsDevices = async (req, res) => {

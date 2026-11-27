@@ -3,9 +3,11 @@ import {
   ArrowLeft,
   ArrowRight,
   Building2,
+  Crosshair,
   Eye,
   Gauge,
   House,
+  MapPin,
   Pencil,
   Plus,
   Recycle,
@@ -74,7 +76,7 @@ const allowedColumns: Record<ResourceKind, string[]> = {
   companies: ['id', 'name', 'district', 'sector', 'cell', 'village'],
   representatives: ['id', 'fullName', 'email', 'companyName', 'district', 'sector'],
   collectors: ['id', 'fullName', 'email', 'representativeName', 'district', 'sector'],
-  households: ['id', 'fullName', 'email', 'address', 'district', 'sector', 'collectorName'],
+  households: ['id', 'fullName', 'email', 'address', 'district', 'sector', 'latitude', 'longitude', 'collectorName'],
   bins: [
     'id',
     'binCode',
@@ -83,8 +85,11 @@ const allowedColumns: Record<ResourceKind, string[]> = {
     'fillLevel',
     'sensorFillLevel',
     'sensorDeviceStatus',
+    'sensorIsSimulated',
     'sensorStatus',
     'batteryLevel',
+    'latitude',
+    'longitude',
     'sensorMeasuredAt',
     'status',
   ],
@@ -92,7 +97,7 @@ const allowedColumns: Record<ResourceKind, string[]> = {
 }
 
 type ResourceRow = { id?: number } & Record<string, unknown>
-type PanelMode = 'view' | 'create' | 'edit' | 'fill'
+type PanelMode = 'view' | 'create' | 'edit' | 'fill' | 'location'
 type ResourcePanel = { mode: PanelMode; row?: ResourceRow }
 type FieldOption = { value: string; label: string }
 type ResourceField = {
@@ -134,9 +139,14 @@ function formatColumn(column: string) {
     fillLevel: 'Fill level',
     sensorFillLevel: 'Sensor fill level',
     sensorDeviceStatus: 'Sensor connection',
+    sensorIsSimulated: 'Device source',
     sensorStatus: 'Sensor health',
     sensorMeasuredAt: 'Last sensor reading',
     batteryLevel: 'Battery level',
+    latitude: 'Latitude',
+    longitude: 'Longitude',
+    locationAccuracy: 'Location accuracy (m)',
+    locationCapturedAt: 'Location captured',
     householdId: 'Household',
     collectorId: 'Collector',
     representativeId: 'Representative',
@@ -165,6 +175,13 @@ function ResourceCell({ column, value }: { column: string; value: unknown }) {
   if (column === 'status' || column === 'assignmentStatus'
     || column === 'sensorDeviceStatus' || column === 'sensorStatus') {
     return typeof value === 'string' ? <StatusBadge status={value} /> : <span>—</span>
+  }
+  if (column === 'sensorIsSimulated') {
+    return value === true ? (
+      <span className="inline-flex rounded-full bg-violet-50 px-2 py-0.5 text-[0.68rem] font-semibold text-violet-800 ring-1 ring-inset ring-violet-600/20">
+        SIMULATED
+      </span>
+    ) : <span className="text-xs text-slate-500">Physical / N/A</span>
   }
   if (column === 'sensorFillLevel' && value == null) {
     return <span className="text-slate-400">No sensor reading</span>
@@ -231,6 +248,38 @@ function requiredNumber(values: Record<string, string>, name: string, label: str
   return value
 }
 
+function optionalDecimal(values: Record<string, string>, name: string, label: string, min: number, max: number) {
+  const raw = values[name]?.trim()
+  if (!raw) return undefined
+  const num = Number(raw)
+  if (!Number.isFinite(num) || num < min || num > max) {
+    throw new Error(`${label} must be between ${min} and ${max}.`)
+  }
+  return Number(num.toFixed(7))
+}
+
+interface GeoCapturePayload {
+  latitude?: number
+  longitude?: number
+  locationAccuracy?: number
+  locationCapturedAt?: string
+}
+
+function geoValues(values: Record<string, string>): GeoCapturePayload {
+  const latitude = optionalDecimal(values, 'latitude', 'Latitude', -90, 90)
+  const longitude = optionalDecimal(values, 'longitude', 'Longitude', -180, 180)
+  const locationAccuracy = optionalDecimal(values, 'locationAccuracy', 'Accuracy', 0, 999999)
+  if ((latitude !== undefined) !== (longitude !== undefined)) {
+    throw new Error('Provide both latitude and longitude together.')
+  }
+  if (locationAccuracy !== undefined && latitude === undefined) {
+    throw new Error('Latitude and longitude are required when recording accuracy.')
+  }
+  return latitude !== undefined
+    ? { latitude, longitude, ...(locationAccuracy !== undefined ? { locationAccuracy } : {}), locationCapturedAt: new Date().toISOString() }
+    : {}
+}
+
 function locationValues(values: Record<string, string>) {
   return {
     district: optionalText(values, 'district'),
@@ -287,7 +336,17 @@ function buildFields(
   },
 ): ResourceField[] {
   if (mode === 'fill') return [{ name: 'fillLevel', label: 'Recorded fill level (%)', type: 'number', required: true, min: 0, max: 100, step: 1 }]
+  if (mode === 'location') return [
+    { name: 'latitude', label: 'Latitude', type: 'number', required: true, min: -90, max: 90, step: 0.000001 },
+    { name: 'longitude', label: 'Longitude', type: 'number', required: true, min: -180, max: 180, step: 0.000001 },
+    { name: 'locationAccuracy', label: 'Accuracy (meters)', type: 'number', min: 0, max: 999999, step: 0.1 },
+  ]
   const create = mode === 'create'
+  const geoFields: ResourceField[] = [
+    { name: 'latitude', label: 'Latitude (optional)', type: 'number', min: -90, max: 90, step: 0.000001 },
+    { name: 'longitude', label: 'Longitude (optional)', type: 'number', min: -180, max: 180, step: 0.000001 },
+    { name: 'locationAccuracy', label: 'GPS accuracy (meters)', type: 'number', min: 0, max: 999999, step: 0.1 },
+  ]
   const location: ResourceField[] = [
     { name: 'district', label: 'District' },
     { name: 'sector', label: 'Sector' },
@@ -338,6 +397,7 @@ function buildFields(
       options: choices.collectors,
     }] : []),
     ...location,
+    ...geoFields,
   ]
   if (kind === 'bins') return [
     ...(create ? [{
@@ -349,6 +409,7 @@ function buildFields(
     }] : []),
     { name: 'binCode', label: 'Bin code', required: true },
     { name: 'capacity', label: 'Capacity', type: 'number', required: true, min: 1, step: 1 },
+    ...geoFields,
   ]
   if (kind === 'collections') {
     if (create) return [
@@ -405,6 +466,19 @@ async function saveResource(
     }
     return binService.updateProgress(id, fillLevel)
   }
+  if (mode === 'location') {
+    if (id === undefined) throw new Error('The selected bin has no valid record ID.')
+    const geo = geoValues(values)
+    if (geo.latitude === undefined || geo.longitude === undefined) {
+      throw new Error('Latitude and longitude are required.')
+    }
+    return binService.updateLocation(id, {
+      latitude: geo.latitude,
+      longitude: geo.longitude,
+      ...(geo.locationAccuracy !== undefined ? { locationAccuracy: geo.locationAccuracy } : {}),
+      locationCapturedAt: geo.locationCapturedAt,
+    })
+  }
 
   if (mode === 'edit' && id === undefined) throw new Error('The selected record has no valid ID.')
   const updating = mode === 'edit'
@@ -453,12 +527,14 @@ async function saveResource(
     })
   }
   if (kind === 'households') {
+    const geo = geoValues(values)
     if (updating) return householdService.update(updateId(), {
       fullName: optionalText(values, 'fullName'),
       phone: optionalText(values, 'phone'),
       address: optionalText(values, 'address'),
       nationalId: optionalText(values, 'nationalId'),
       ...locationValues(values),
+      ...geo,
     })
     return householdService.create({
       fullName: requiredText(values, 'fullName', 'Full name'),
@@ -471,17 +547,21 @@ async function saveResource(
         ? { collectorId: requiredNumber(values, 'collectorId', 'Assigned collector') }
         : {}),
       ...locationValues(values),
+      ...geo,
     })
   }
   if (kind === 'bins') {
+    const geo = geoValues(values)
     if (updating) return binService.update(updateId(), {
       binCode: requiredText(values, 'binCode', 'Bin code'),
       capacity: requiredNumber(values, 'capacity', 'Capacity'),
+      ...geo,
     })
     return binService.create({
       householdId: requiredNumber(values, 'householdId', 'Household'),
       binCode: requiredText(values, 'binCode', 'Bin code'),
       capacity: requiredNumber(values, 'capacity', 'Capacity'),
+      ...geo,
     })
   }
   if (updating) return collectionService.update(updateId(), {
@@ -673,14 +753,17 @@ export function ResourcePage({ kind }: { kind: ResourceKind }) {
               <h2 className="text-lg font-semibold text-slate-900">
                 {panel.mode === 'view' ? `${singularTitles[kind]} details`
                   : panel.mode === 'fill' ? 'Record bin fill level'
-                    : `${panel.mode === 'create' ? 'Add' : 'Edit'} ${singularTitles[kind]}`}
+                    : panel.mode === 'location' ? 'Capture bin GPS location'
+                      : `${panel.mode === 'create' ? 'Add' : 'Edit'} ${singularTitles[kind]}`}
               </h2>
               <p className="mt-1 text-sm text-slate-500">
                 {panel.mode === 'fill'
                   ? 'This saves a manual reading; it does not come from a live sensor.'
-                  : panel.mode === 'view'
-                    ? 'Record information returned by the SWMS API.'
-                    : 'Changes are validated by the server and limited to your account permissions.'}
+                  : panel.mode === 'location'
+                    ? 'Capture geographic coordinates from a phone/tablet GPS or enter coordinates manually.'
+                    : panel.mode === 'view'
+                      ? 'Record information returned by the SWMS API.'
+                      : 'Changes are validated by the server and limited to your account permissions.'}
               </p>
             </div>
             <Button variant="quiet" icon={X} aria-label="Close panel" onClick={closePanel} />
@@ -722,6 +805,37 @@ export function ResourcePage({ kind }: { kind: ResourceKind }) {
                   </p>
                 )}
               {saveMutation.error && <div className="mb-4"><ErrorState error={saveMutation.error} /></div>}
+              {(panel.mode === 'location' || ((kind === 'bins' || kind === 'households') && (panel.mode === 'create' || panel.mode === 'edit'))) && (
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  <span>Capture GPS coordinates from your current smartphone/tablet location when installing or registering.</span>
+                  <Button
+                    variant="secondary"
+                    icon={Crosshair}
+                    className="min-h-8 px-2.5 py-1 text-xs"
+                    onClick={() => {
+                      if (!navigator.geolocation) {
+                        setNotice('Browser geolocation is unavailable on this device. Enter coordinates manually.')
+                        return
+                      }
+                      navigator.geolocation.getCurrentPosition(
+                        (pos) => {
+                          setFormValues((current) => ({
+                            ...current,
+                            latitude: pos.coords.latitude.toFixed(6),
+                            longitude: pos.coords.longitude.toFixed(6),
+                            locationAccuracy: Number(pos.coords.accuracy.toFixed(2)).toString(),
+                          }))
+                          setNotice('Captured device GPS coordinates into the form.')
+                        },
+                        (err) => setNotice(`Could not capture GPS location: ${err.message}`),
+                        { enableHighAccuracy: true, timeout: 10_000 }
+                      )
+                    }}
+                  >
+                    Use device GPS
+                  </Button>
+                </div>
+              )}
               <div className="grid gap-4 sm:grid-cols-2">
                 {fields.map((field) => (
                   <label key={field.name} className={`block text-sm font-medium text-slate-700 ${field.type === 'textarea' ? 'sm:col-span-2' : ''}`}>
@@ -772,7 +886,7 @@ export function ResourcePage({ kind }: { kind: ResourceKind }) {
                 <Button variant="secondary" onClick={closePanel} disabled={saveMutation.isPending}>Cancel</Button>
                 <Button type="submit" disabled={saveMutation.isPending || Boolean(optionsError) || optionsLoading || unavailableOptions
                   || (panel.mode === 'create' && kind === 'collections' && user?.role === 'COLLECTOR' && !ownCollectorId)}>
-                  {saveMutation.isPending ? 'Saving…' : panel.mode === 'fill' ? 'Save reading' : panel.mode === 'create' ? 'Create record' : 'Save changes'}
+                  {saveMutation.isPending ? 'Saving…' : panel.mode === 'fill' ? 'Save reading' : panel.mode === 'location' ? 'Save location' : panel.mode === 'create' ? 'Create record' : 'Save changes'}
                 </Button>
               </div>
             </form>
@@ -781,9 +895,11 @@ export function ResourcePage({ kind }: { kind: ResourceKind }) {
       )}
 
       {kind === 'bins' && (
-        <div className="mb-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
-          <p>Fill levels shown are stored bin records. Live sensor telemetry and last-device updates are not connected.</p>
+        <div className="mb-5 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-950">
+          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-forest-700" aria-hidden="true" />
+          <p>
+            Fill levels combine stored bin records with connected IoT sensor telemetry. Simulated test sensors are explicitly labeled <strong>SIMULATED</strong>.
+          </p>
         </div>
       )}
 
@@ -847,6 +963,11 @@ export function ResourcePage({ kind }: { kind: ResourceKind }) {
                           <Button variant="quiet" icon={Gauge} className="min-h-9 px-2"
                             aria-label="Record bin fill level" title="Record fill level"
                             onClick={() => openPanel('fill', row)} />
+                        )}
+                        {kind === 'bins' && (user?.role === 'ADMIN' || user?.role === 'COMPANY_REPRESENTATIVE' || user?.role === 'COLLECTOR') && (
+                          <Button variant="quiet" icon={MapPin} className="min-h-9 px-2"
+                            aria-label="Capture bin GPS location" title="Capture / set GPS location"
+                            onClick={() => openPanel('location', row)} />
                         )}
                         {canDelete && (
                           <Button variant="quiet" icon={Trash2} className="min-h-9 px-2 text-red-700 hover:bg-red-50"

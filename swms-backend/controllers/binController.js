@@ -51,6 +51,23 @@ exports.empty = async (req, res) => {
   res.json({ data: await binService.empty(req.user, req.params.id) });
 };
 
+exports.updateLocation = async (req, res) => {
+  const bin = await binService.updateLocation(req.user, req.params.id, req.body);
+  await auditModel.record({
+    actorUserId: req.user.id,
+    action: "BIN_LOCATION_CAPTURED",
+    resourceType: "WASTE_BIN",
+    resourceId: req.params.id,
+    ipAddress: req.ip,
+    metadata: {
+      latitude: req.body.latitude,
+      longitude: req.body.longitude,
+      locationAccuracy: req.body.locationAccuracy ?? null,
+    },
+  });
+  res.json({ data: bin });
+};
+
 exports.myBin = async (req, res) => {
   res.json({ data: await binService.myBin(req.user.id) });
 };

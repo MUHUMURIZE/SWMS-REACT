@@ -4,6 +4,7 @@ const userModel = require("../models/userModel");
 const householdService = require("../services/householdService");
 const AppError = require("../utils/AppError");
 const auditModel = require("../models/auditModel");
+const { validateGeoInput } = require("../utils/geo");
 
 exports.list = async (req, res) => {
   const households = await householdService.list(req.user, req.pagination);
@@ -52,7 +53,8 @@ exports.me = async (req, res) => {
 exports.updateMe = async (req, res) => {
   const profile = await householdModel.findByUserId(req.user.id);
   if (!profile) throw new AppError(404, "Household profile not found.", "NOT_FOUND");
-  const updatedProfile = await householdModel.update(profile.id, req.body);
+  const geo = validateGeoInput(req.body);
+  const updatedProfile = await householdModel.update(profile.id, geo ? { ...req.body, ...geo } : req.body);
   const user = await userModel.findPublicById(req.user.id);
   res.json({ data: { user, profile: updatedProfile } });
 };

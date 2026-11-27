@@ -1,4 +1,5 @@
 const { pool } = require("../config/db");
+const { normalizeGeoFields } = require("../utils/geo");
 const onlineWindowSeconds = Number.isSafeInteger(Number(process.env.DEVICE_ONLINE_WINDOW_SECONDS))
   && Number(process.env.DEVICE_ONLINE_WINDOW_SECONDS) > 0
   ? Number(process.env.DEVICE_ONLINE_WINDOW_SECONDS)
@@ -7,11 +8,16 @@ const onlineWindowSeconds = Number.isSafeInteger(Number(process.env.DEVICE_ONLIN
 const selection = `SELECT b.id, b.household_id AS "householdId", b.bin_code AS "binCode",
   b.capacity, b.fill_level AS "fillLevel", b.status,
   b.created_at AS "createdAt", b.updated_at AS "updatedAt",
-  u.full_name AS "householdName", h.collector_id AS "collectorId",
-  r.company_id AS "companyId", h.district,
+  u.full_name AS "householdName", h.address AS "householdAddress",
+  h.collector_id AS "collectorId", r.company_id AS "companyId", h.district,
+  COALESCE(b.latitude, h.latitude) AS latitude,
+  COALESCE(b.longitude, h.longitude) AS longitude,
+  COALESCE(b.location_accuracy, h.location_accuracy) AS "locationAccuracy",
+  COALESCE(b.location_captured_at, h.location_captured_at) AS "locationCapturedAt",
   CASE WHEN sensor_device.id IS NULL THEN 'NOT_CONFIGURED'
     WHEN sensor_device.last_communication_at >= CURRENT_TIMESTAMP - ($1 * INTERVAL '1 second')
       THEN 'ONLINE' ELSE 'OFFLINE' END AS "sensorDeviceStatus",
+  COALESCE(sensor_device.is_simulated, FALSE) AS "sensorIsSimulated",
   sensor_device.last_communication_at AS "lastCommunicationAt",
   sensor.fill_level::integer AS "sensorFillLevel", sensor.battery_level AS "batteryLevel",
   sensor.sensor_status AS "sensorStatus", sensor.overflow_detected AS "overflowDetected",
@@ -48,7 +54,7 @@ exports.list = async (scope = {}, pagination = { limit: 50, offset: 0 }) => {
     `${query} ORDER BY b.id LIMIT $${values.length - 1} OFFSET $${values.length}`,
     values
   );
-  return result.rows;
+  return result.rows.map(normalizeGeoFields);
 };
 
 exports.listFull = async (scope = {}, pagination = { limit: 50, offset: 0 }) => {
@@ -67,12 +73,12 @@ exports.listFull = async (scope = {}, pagination = { limit: 50, offset: 0 }) => 
   }
   values.push(pagination.limit, pagination.offset);
   const result = await pool.query(`${query} ORDER BY b.fill_level DESC, b.id LIMIT $${values.length - 1} OFFSET $${values.length}`, values);
-  return result.rows;
+  return result.rows.map(normalizeGeoFields);
 };
 
 exports.findById = async (id, executor = pool) => {
   const result = await executor.query(`${selection} WHERE b.id = $2`, [onlineWindowSeconds, id]);
-  return result.rows[0] || null;
+  return result.rows[0] ? normalizeGeoFields(result.rows[0]) : null;
 };
 
 exports.findByHouseholdId = async (householdId) => {
@@ -80,19 +86,34 @@ exports.findByHouseholdId = async (householdId) => {
     `${selection} WHERE b.household_id = $2`,
     [onlineWindowSeconds, householdId]
   );
-  return result.rows[0] || null;
+  return result.rows[0] ? normalizeGeoFields(result.rows[0]) : null;
 };
 
-exports.create = async ({ householdId, binCode, capacity }) => {
-  const result = await pool.query(
-    `INSERT INTO waste_bins (household_id, bin_code, capacity)
-     VALUES ($1, $2, $3) RETURNING id`,
-    [householdId, binCode, capacity]
-  );
+exports.create = async ({ householdId, binCode, capacity, latitude, longitude, locationAccuracy, locationCapturedAt }) => {
+  const hasGeo = latitude !== undefined && longitude !== undefined;
+  const result = hasGeo
+    ? await pool.query(
+      `INSERT INTO waste_bins (household_id, bin_code, capacity, latitude, longitude, location_accuracy, location_captured_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [householdId, binCode, capacity, latitude, longitude, locationAccuracy ?? null, locationCapturedAt ?? new Date().toISOString()]
+    )
+    : await pool.query(
+      `INSERT INTO waste_bins (household_id, bin_code, capacity)
+       VALUES ($1, $2, $3) RETURNING id`,
+      [householdId, binCode, capacity]
+    );
   return exports.findById(result.rows[0].id);
 };
 
-exports.createForHousehold = async (executor, householdId) => {
+exports.createForHousehold = async (executor, householdId, geo = null) => {
+  if (geo) {
+    const result = await executor.query(
+      `INSERT INTO waste_bins (household_id, latitude, longitude, location_accuracy, location_captured_at)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [householdId, geo.latitude, geo.longitude, geo.locationAccuracy ?? null, geo.locationCapturedAt ?? null]
+    );
+    return result.rows[0].id;
+  }
   const result = await executor.query(
     "INSERT INTO waste_bins (household_id) VALUES ($1) RETURNING id",
     [householdId]
@@ -100,13 +121,72 @@ exports.createForHousehold = async (executor, householdId) => {
   return result.rows[0].id;
 };
 
-exports.update = async (id, { binCode, capacity }) => {
-  await pool.query(
-    `UPDATE waste_bins
-     SET bin_code = COALESCE($1, bin_code), capacity = COALESCE($2, capacity)
-     WHERE id = $3`,
-    [binCode === undefined ? null : binCode, capacity === undefined ? null : capacity, id]
-  );
+exports.update = async (id, { binCode, capacity, latitude, longitude, locationAccuracy, locationCapturedAt }) => {
+  const hasGeo = latitude !== undefined && longitude !== undefined;
+  if (hasGeo) {
+    await pool.query(
+      `UPDATE waste_bins
+       SET bin_code = COALESCE($1, bin_code),
+         capacity = COALESCE($2, capacity),
+         latitude = $3,
+         longitude = $4,
+         location_accuracy = COALESCE($5, location_accuracy),
+         location_captured_at = COALESCE($6, CURRENT_TIMESTAMP)
+       WHERE id = $7`,
+      [
+        binCode === undefined ? null : binCode,
+        capacity === undefined ? null : capacity,
+        latitude,
+        longitude,
+        locationAccuracy ?? null,
+        locationCapturedAt ?? null,
+        id,
+      ]
+    );
+  } else {
+    await pool.query(
+      `UPDATE waste_bins
+       SET bin_code = COALESCE($1, bin_code), capacity = COALESCE($2, capacity)
+       WHERE id = $3`,
+      [binCode === undefined ? null : binCode, capacity === undefined ? null : capacity, id]
+    );
+  }
+  return exports.findById(id);
+};
+
+exports.updateLocation = async (id, { latitude, longitude, locationAccuracy, locationCapturedAt }) => {
+  const capturedAt = locationCapturedAt || new Date().toISOString();
+  const connection = await pool.connect();
+  try {
+    await connection.query("BEGIN");
+    const updatedBin = await connection.query(
+      `UPDATE waste_bins
+       SET latitude = $1,
+         longitude = $2,
+         location_accuracy = COALESCE($3, location_accuracy),
+         location_captured_at = $4
+       WHERE id = $5
+       RETURNING household_id`,
+      [latitude, longitude, locationAccuracy ?? null, capturedAt, id]
+    );
+    if (updatedBin.rows[0]) {
+      await connection.query(
+        `UPDATE households
+         SET latitude = COALESCE(latitude, $1),
+           longitude = COALESCE(longitude, $2),
+           location_accuracy = COALESCE(location_accuracy, $3),
+           location_captured_at = COALESCE(location_captured_at, $4)
+         WHERE id = $5`,
+        [latitude, longitude, locationAccuracy ?? null, capturedAt, updatedBin.rows[0].household_id]
+      );
+    }
+    await connection.query("COMMIT");
+  } catch (error) {
+    await connection.query("ROLLBACK");
+    throw error;
+  } finally {
+    connection.release();
+  }
   return exports.findById(id);
 };
 

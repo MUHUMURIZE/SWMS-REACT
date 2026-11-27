@@ -20,6 +20,9 @@ const FleetPage = lazy(() => import('./pages/FleetPage').then((module) => ({ def
 const IntegrationStatusPage = lazy(() => import('./pages/IntegrationStatusPage').then((module) => ({ default: module.IntegrationStatusPage })))
 const GPSTrackingPage = lazy(() => import('./pages/GPSTrackingPage').then((module) => ({ default: module.GPSTrackingPage })))
 const IoTDevicesPage = lazy(() => import('./pages/IoTDevicesPage').then((module) => ({ default: module.IoTDevicesPage })))
+const DevSimulatorPage = import.meta.env.DEV
+  ? lazy(() => import('./pages/DevSimulatorPage').then((module) => ({ default: module.DevSimulatorPage })))
+  : null
 
 function AccessDeniedPage() {
   return (
@@ -58,12 +61,17 @@ function AppRoutes() {
             <Route element={<ProtectedRoute roles={['ADMIN', 'COMPANY_REPRESENTATIVE']} />}>
               <Route path="/collectors" element={<ResourcePage kind="collectors" />} />
               <Route path="/reports" element={<ReportsPage />} />
-              <Route path="/devices" element={<IoTDevicesPage />} />
             </Route>
             <Route element={<ProtectedRoute roles={['ADMIN', 'COMPANY_REPRESENTATIVE', 'COLLECTOR']} />}>
               <Route path="/fleet" element={<FleetPage />} />
               <Route path="/gps" element={<GPSTrackingPage />} />
+              <Route path="/devices" element={<IoTDevicesPage />} />
             </Route>
+            {import.meta.env.DEV && DevSimulatorPage && (
+              <Route element={<ProtectedRoute roles={['ADMIN']} />}>
+                <Route path="/dev-simulator" element={<DevSimulatorPage />} />
+              </Route>
+            )}
             <Route element={<ProtectedRoute roles={['ADMIN', 'COMPANY_REPRESENTATIVE', 'COLLECTOR']} />}>
               <Route path="/households" element={<ResourcePage kind="households" />} />
               <Route path="/bins" element={<ResourcePage kind="bins" />} />

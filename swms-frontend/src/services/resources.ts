@@ -2,6 +2,7 @@ import { api, unwrap } from '../lib/api'
 import type {
   Bin,
   BinAlert,
+  BinTelemetryReading,
   Collection,
   Collector,
   Company,
@@ -9,6 +10,7 @@ import type {
   DistrictAgreement,
   DeviceEnrollment,
   Household,
+  LatestBinTelemetry,
   Notification,
   ManagedDevice,
   Pagination,
@@ -188,8 +190,9 @@ export const trackingService = {
     unwrap<{
       vehicleId: number
       trackingStatus: VehicleTracking['trackingStatus']
+      isSimulated?: boolean
       lastCommunicationAt: string | null
-      location: Pick<VehicleTracking, 'latitude' | 'longitude' | 'speed' | 'heading' | 'accuracy' | 'recordedAt' | 'receivedAt'> | null
+      location: (Pick<VehicleTracking, 'latitude' | 'longitude' | 'speed' | 'heading' | 'accuracy' | 'recordedAt' | 'receivedAt'> & { isSimulated?: boolean }) | null
     }>((await api.get(`/api/tracking/vehicles/${vehicleId}/location`)).data),
   history: async (vehicleId: number, pagination: Pagination) =>
     unwrap<VehicleLocation[]>((await api.get(`/api/tracking/vehicles/${vehicleId}/history`, {
@@ -199,9 +202,9 @@ export const trackingService = {
     unwrap<ManagedDevice[]>((await api.get('/api/tracking/devices', {
       params: params(pagination),
     })).data),
-  registerDevice: async (deviceCode: string) =>
+  registerDevice: async (deviceCode: string, isSimulated = false) =>
     unwrap<DeviceEnrollment>(
-      (await api.post('/api/tracking/devices', { deviceCode })).data,
+      (await api.post('/api/tracking/devices', { deviceCode, ...(isSimulated ? { isSimulated: true } : {}) })).data,
     ),
   associateDevice: async (deviceId: number, vehicleId: number) =>
     unwrap<ManagedDevice>(
@@ -225,35 +228,14 @@ export const iotService = {
       params: params(pagination),
     })).data),
   latest: async (binId: number) =>
-    unwrap<{
-      binId: number
-      deviceStatus: 'NOT_CONFIGURED' | 'ONLINE' | 'OFFLINE'
-      lastCommunicationAt: string | null
-      reading: {
-        fillLevel: number
-        batteryLevel: number | null
-        sensorStatus: 'OK' | 'DEGRADED' | 'FAULT'
-        overflowDetected: boolean | null
-        measuredAt: string
-        receivedAt: string
-      } | null
-    }>((await api.get(`/api/iot/bins/${binId}/latest`)).data),
+    unwrap<LatestBinTelemetry>((await api.get(`/api/iot/bins/${binId}/latest`)).data),
   history: async (binId: number, pagination: Pagination) =>
-    unwrap<Array<{
-      id: number
-      binId: number
-      fillLevel: number
-      batteryLevel: number | null
-      sensorStatus: 'OK' | 'DEGRADED' | 'FAULT'
-      overflowDetected: boolean | null
-      measuredAt: string
-      receivedAt: string
-    }>>((await api.get(`/api/iot/bins/${binId}/readings`, {
+    unwrap<BinTelemetryReading[]>((await api.get(`/api/iot/bins/${binId}/readings`, {
       params: params(pagination),
     })).data),
-  registerDevice: async (deviceCode: string) =>
+  registerDevice: async (deviceCode: string, isSimulated = false) =>
     unwrap<DeviceEnrollment>(
-      (await api.post('/api/iot/devices', { deviceCode })).data,
+      (await api.post('/api/iot/devices', { deviceCode, ...(isSimulated ? { isSimulated: true } : {}) })).data,
     ),
   associateDevice: async (deviceId: number, binId: number) =>
     unwrap<ManagedDevice>(
@@ -310,6 +292,12 @@ export const binService = {
   myBin: async () => unwrap<Bin>((await api.get('/api/my-bin')).data),
   updateProgress: async (id: number, fillLevel: number) =>
     unwrap<Bin>((await api.put(`/api/bins/${id}/progress`, { fillLevel })).data),
+  updateLocation: async (id: number, body: {
+    latitude: number
+    longitude: number
+    locationAccuracy?: number
+    locationCapturedAt?: string
+  }) => unwrap<Bin>((await api.put(`/api/bins/${id}/location`, body)).data),
   empty: async (id: number) => unwrap<Bin>((await api.put(`/api/bins/${id}/empty`)).data),
 }
 

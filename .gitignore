@@ -20,3 +20,5 @@ swms-backend/.env.*
 .vscode/
 .idea/
 coverage/
+.sim-state.json
+swms-backend/.sim-state.json

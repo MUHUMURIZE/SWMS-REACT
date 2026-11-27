@@ -31,6 +31,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useAuth } from '../context/AuthContext'
+import { CollectorRouteSection } from '../components/CollectorRouteSection'
 import { EmptyState, ErrorState, LoadingState } from '../components/PageState'
 import { Card, PageHeader, SectionHeading } from '../components/ui'
 import { dashboardService, notificationService } from '../services/resources'
@@ -110,8 +111,8 @@ const quickLinks: Record<UserRole, Array<{ to: string; label: string; icon: type
   COLLECTOR: [
     { to: '/households', label: 'My households', icon: House },
     { to: '/collections', label: 'Collections', icon: Recycle },
-    { to: '/scheduling', label: 'Schedule', icon: CalendarDays },
-    { to: '/gps', label: 'GPS integration status', icon: MapPinned },
+    { to: '/devices', label: 'Smart-bin monitoring', icon: Trash2 },
+    { to: '/gps', label: 'GPS vehicle tracking', icon: MapPinned },
   ],
   HOUSEHOLD: [
     { to: '/bins', label: 'My bin', icon: Trash2 },
@@ -313,20 +314,7 @@ export function DashboardPage() {
               />
             )}
             {role === 'HOUSEHOLD' && <HouseholdTrend value={query.data.binFillTrend} />}
-            {role === 'COLLECTOR' && (
-              <Card className="flex min-h-64 flex-col justify-center bg-gradient-to-br from-forest-900 to-teal-700 p-6 text-white">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10">
-                  <Truck size={22} aria-hidden="true" />
-                </div>
-                <h2 className="mt-5 text-xl font-semibold">Your authorized field workspace</h2>
-                <p className="mt-2 max-w-md text-sm leading-6 text-emerald-50/75">
-                  Use your collection list and schedule to manage assigned work. Location tracking is not connected in this deployment.
-                </p>
-                <Link to="/collections" className="mt-5 inline-flex w-fit items-center gap-2 text-sm font-semibold text-white hover:underline">
-                  View collections <ArrowUpRight size={16} aria-hidden="true" />
-                </Link>
-              </Card>
-            )}
+            {role === 'COLLECTOR' && <CollectorRouteSection />}
             <Card className="p-5">
               <SectionHeading
                 title="Quick access"

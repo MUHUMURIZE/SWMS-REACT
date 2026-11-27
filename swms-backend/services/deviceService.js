@@ -138,6 +138,7 @@ async function findDevice(executor, type, deviceId, lock = false) {
   const result = await executor.query(
     `SELECT id, device_code AS "deviceCode", device_type AS "deviceType",
       vehicle_id AS "vehicleId", bin_id AS "binId", status,
+      is_simulated AS "isSimulated",
       last_communication_at AS "lastCommunicationAt", created_by AS "createdBy"
      FROM resource_devices
      WHERE id = $1 AND device_type = $2${lock ? " FOR UPDATE" : ""}`,
@@ -177,17 +178,21 @@ exports.statusForFillLevel = (fillLevel) => {
   return "FULL";
 };
 
-exports.registerDevice = async (user, type, deviceCode) => {
+exports.registerDevice = async (user, type, deviceCode, options = {}) => {
   assertManager(user);
+  const isSimulated = options?.isSimulated === true;
+  if (isSimulated && process.env.NODE_ENV === "production") {
+    throw new AppError(403, "Simulated devices cannot be registered in production.", "FORBIDDEN");
+  }
   const { credential, hash } = newCredential();
   try {
     return await runTransaction(async (client) => {
       const result = await client.query(
-        `INSERT INTO resource_devices (device_type, device_code, credential_hash, created_by)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO resource_devices (device_type, device_code, credential_hash, is_simulated, created_by)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING id, device_code AS "deviceCode", device_type AS "deviceType",
-           status, created_at AS "createdAt"`,
-        [type, deviceCode, hash, user.id]
+           is_simulated AS "isSimulated", status, created_at AS "createdAt"`,
+        [type, deviceCode, hash, isSimulated, user.id]
       );
       const device = result.rows[0];
       await auditModel.record({
@@ -195,7 +200,7 @@ exports.registerDevice = async (user, type, deviceCode) => {
         action: `${type}_DEVICE_REGISTERED`,
         resourceType: "RESOURCE_DEVICE",
         resourceId: device.id,
-        metadata: { deviceType: type, deviceCode },
+        metadata: { deviceType: type, deviceCode, isSimulated },
       }, client);
       return { ...device, credential };
     });
@@ -231,6 +236,7 @@ exports.listDevices = async (user, type, pagination) => {
   const result = await pool.query(
     `SELECT d.id, d.device_code AS "deviceCode", d.device_type AS "deviceType",
       d.vehicle_id AS "vehicleId", d.bin_id AS "binId", d.status,
+      d.is_simulated AS "isSimulated",
       d.last_communication_at AS "lastCommunicationAt",
       CASE WHEN d.status <> 'ACTIVE' THEN 'REVOKED'
         WHEN d.last_communication_at >= CURRENT_TIMESTAMP - ($${user.role === "COMPANY_REPRESENTATIVE" ? 4 : 2} * INTERVAL '1 second')
@@ -265,7 +271,7 @@ exports.associateDevice = async (user, type, deviceId, resourceId) => {
           action: `${type}_DEVICE_ASSOCIATED`,
           resourceType: "RESOURCE_DEVICE",
           resourceId: deviceId,
-          metadata: { previousResourceId: currentId, resourceId },
+          metadata: { previousResourceId: currentId, resourceId, isSimulated: Boolean(device.isSimulated) },
         }, client);
       }
       return {
@@ -273,6 +279,7 @@ exports.associateDevice = async (user, type, deviceId, resourceId) => {
         deviceCode: device.deviceCode,
         deviceType: type,
         [type === "GPS" ? "vehicleId" : "binId"]: resource.id,
+        isSimulated: Boolean(device.isSimulated),
         status: device.status,
         trackingStatus: onlineStatus(device.lastCommunicationAt),
         lastCommunicationAt: device.lastCommunicationAt,
@@ -341,9 +348,11 @@ exports.mapVehicles = async (user) => {
       CASE WHEN d.id IS NULL THEN 'NOT_CONFIGURED'
         WHEN d.last_communication_at >= CURRENT_TIMESTAMP - ($1 * INTERVAL '1 second')
           THEN 'ONLINE' ELSE 'OFFLINE' END AS "trackingStatus",
+      COALESCE(d.is_simulated, FALSE) AS "isSimulated",
       d.last_communication_at AS "lastCommunicationAt",
       l.device_id AS "deviceId", l.message_id AS "messageId",
       l.latitude, l.longitude, l.speed, l.heading, l.accuracy,
+      COALESCE(l.is_simulated, FALSE) AS "locationIsSimulated",
       l.recorded_at AS "recordedAt", l.received_at AS "receivedAt"
      FROM fleet_vehicles v
      LEFT JOIN collectors c ON c.id = v.assigned_collector_id
@@ -351,7 +360,7 @@ exports.mapVehicles = async (user) => {
      LEFT JOIN resource_devices d ON d.vehicle_id = v.id
        AND d.device_type = 'GPS' AND d.status = 'ACTIVE'
      LEFT JOIN LATERAL (
-       SELECT device_id, message_id, latitude, longitude, speed, heading, accuracy, recorded_at, received_at
+       SELECT device_id, message_id, latitude, longitude, speed, heading, accuracy, is_simulated, recorded_at, received_at
        FROM vehicle_locations WHERE vehicle_id = v.id
        ORDER BY recorded_at DESC, id DESC LIMIT 1
      ) l ON TRUE
@@ -372,16 +381,18 @@ exports.mapVehicles = async (user) => {
 async function vehicleDeviceStatus(vehicleId) {
   const result = await pool.query(
     `SELECT d.last_communication_at AS "lastCommunicationAt",
+      COALESCE(d.is_simulated, FALSE) AS "isSimulated",
       CASE WHEN d.id IS NULL THEN 'NOT_CONFIGURED'
         WHEN d.last_communication_at >= CURRENT_TIMESTAMP - ($2 * INTERVAL '1 second')
           THEN 'ONLINE' ELSE 'OFFLINE' END AS "trackingStatus",
       l.id AS "locationId", l.latitude, l.longitude, l.speed, l.heading, l.accuracy,
+      COALESCE(l.is_simulated, FALSE) AS "locationIsSimulated",
       l.recorded_at AS "recordedAt", l.received_at AS "receivedAt"
      FROM fleet_vehicles v
      LEFT JOIN resource_devices d ON d.vehicle_id = v.id
        AND d.device_type = 'GPS' AND d.status = 'ACTIVE'
      LEFT JOIN LATERAL (
-       SELECT id, latitude, longitude, speed, heading, accuracy, recorded_at, received_at
+       SELECT id, latitude, longitude, speed, heading, accuracy, is_simulated, recorded_at, received_at
        FROM vehicle_locations WHERE vehicle_id = v.id
        ORDER BY recorded_at DESC, id DESC LIMIT 1
      ) l ON TRUE
@@ -397,6 +408,7 @@ exports.latestLocation = async (user, vehicleId) => {
   return {
     vehicleId,
     trackingStatus: latest.trackingStatus,
+    isSimulated: Boolean(latest.isSimulated),
     lastCommunicationAt: latest.lastCommunicationAt,
     location: latest.locationId ? {
       latitude: Number(latest.latitude),
@@ -404,6 +416,7 @@ exports.latestLocation = async (user, vehicleId) => {
       speed: latest.speed === null ? null : Number(latest.speed),
       heading: latest.heading === null ? null : Number(latest.heading),
       accuracy: latest.accuracy === null ? null : Number(latest.accuracy),
+      isSimulated: Boolean(latest.locationIsSimulated),
       recordedAt: latest.recordedAt,
       receivedAt: latest.receivedAt,
     } : null,
@@ -415,6 +428,7 @@ exports.locationHistory = async (user, vehicleId, pagination) => {
   const result = await pool.query(
     `SELECT id, device_id AS "deviceId", vehicle_id AS "vehicleId",
       message_id AS "messageId", latitude, longitude, speed, heading, accuracy,
+      is_simulated AS "isSimulated",
       recorded_at AS "recordedAt", received_at AS "receivedAt"
      FROM vehicle_locations WHERE vehicle_id = $1
      ORDER BY recorded_at DESC, id DESC LIMIT $2 OFFSET $3`,
@@ -438,7 +452,11 @@ exports.ingestLocation = async (authenticatedDevice, data) => {
   return runTransaction(async (client) => {
     const device = await findDevice(client, "GPS", authenticatedDevice.id, true);
     if (device.status !== "ACTIVE") throw new AppError(401, "The device is revoked.", "UNAUTHENTICATED");
+    if (process.env.NODE_ENV === "production" && device.isSimulated) {
+      throw new AppError(403, "Simulated devices are disabled in production.", "FORBIDDEN");
+    }
     if (!device.vehicleId) throw new AppError(409, "The GPS device is not associated with a vehicle.", "CONFLICT");
+    const isSimulated = Boolean(device.isSimulated);
     const values = {
       deviceId: device.id,
       vehicleId: device.vehicleId,
@@ -452,12 +470,12 @@ exports.ingestLocation = async (authenticatedDevice, data) => {
     };
     const inserted = await client.query(
       `INSERT INTO vehicle_locations
-        (device_id, vehicle_id, message_id, latitude, longitude, speed, heading, accuracy, recorded_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        (device_id, vehicle_id, message_id, latitude, longitude, speed, heading, accuracy, recorded_at, is_simulated)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (device_id, message_id) DO NOTHING
        RETURNING id, received_at AS "receivedAt"`,
       [values.deviceId, values.vehicleId, values.messageId, values.latitude, values.longitude,
-        values.speed, values.heading, values.accuracy, values.recordedAt]
+        values.speed, values.heading, values.accuracy, values.recordedAt, isSimulated]
     );
     let duplicate = false;
     let duplicateReceivedAt;
@@ -483,6 +501,7 @@ exports.ingestLocation = async (authenticatedDevice, data) => {
       messageId: data.messageId,
       receivedAt: inserted.rows[0]?.receivedAt || duplicateReceivedAt || null,
       duplicate,
+      isSimulated,
     };
   });
 };
@@ -490,17 +509,19 @@ exports.ingestLocation = async (authenticatedDevice, data) => {
 async function binTelemetryState(binId) {
   const result = await pool.query(
     `SELECT d.last_communication_at AS "lastCommunicationAt",
+      COALESCE(d.is_simulated, FALSE) AS "isSimulated",
       CASE WHEN d.id IS NULL THEN 'NOT_CONFIGURED'
         WHEN d.last_communication_at >= CURRENT_TIMESTAMP - ($2 * INTERVAL '1 second')
           THEN 'ONLINE' ELSE 'OFFLINE' END AS "deviceStatus",
       r.fill_level AS "fillLevel", r.battery_level AS "batteryLevel",
       r.sensor_status AS "sensorStatus", r.overflow_detected AS "overflowDetected",
+      COALESCE(r.is_simulated, FALSE) AS "readingIsSimulated",
       r.measured_at AS "measuredAt", r.received_at AS "receivedAt"
      FROM waste_bins b
      LEFT JOIN resource_devices d ON d.bin_id = b.id
        AND d.device_type = 'BIN' AND d.status = 'ACTIVE'
      LEFT JOIN LATERAL (
-       SELECT fill_level, battery_level, sensor_status, overflow_detected, measured_at, received_at
+       SELECT fill_level, battery_level, sensor_status, overflow_detected, is_simulated, measured_at, received_at
        FROM bin_sensor_readings WHERE bin_id = b.id
        ORDER BY measured_at DESC, id DESC LIMIT 1
      ) r ON TRUE
@@ -516,12 +537,14 @@ exports.latestBinReading = async (user, binId) => {
   return {
     binId,
     deviceStatus: latest.deviceStatus,
+    isSimulated: Boolean(latest.isSimulated),
     lastCommunicationAt: latest.lastCommunicationAt,
     reading: latest.measuredAt ? {
       fillLevel: Number(latest.fillLevel),
       batteryLevel: latest.batteryLevel,
       sensorStatus: latest.sensorStatus,
       overflowDetected: latest.overflowDetected,
+      isSimulated: Boolean(latest.readingIsSimulated),
       measuredAt: latest.measuredAt,
       receivedAt: latest.receivedAt,
     } : null,
@@ -533,8 +556,8 @@ exports.binReadingHistory = async (user, binId, pagination) => {
   const result = await pool.query(
     `SELECT id, device_id AS "deviceId", bin_id AS "binId", message_id AS "messageId",
       fill_level AS "fillLevel", battery_level AS "batteryLevel", sensor_status AS "sensorStatus",
-      overflow_detected AS "overflowDetected", measured_at AS "measuredAt",
-      received_at AS "receivedAt"
+      overflow_detected AS "overflowDetected", is_simulated AS "isSimulated",
+      measured_at AS "measuredAt", received_at AS "receivedAt"
      FROM bin_sensor_readings WHERE bin_id = $1
      ORDER BY measured_at DESC, id DESC LIMIT $2 OFFSET $3`,
     [binId, pagination.limit, pagination.offset]
@@ -550,7 +573,11 @@ exports.ingestTelemetry = async (authenticatedDevice, data) => {
   return runTransaction(async (client) => {
     const device = await findDevice(client, "BIN", authenticatedDevice.id, true);
     if (device.status !== "ACTIVE") throw new AppError(401, "The device is revoked.", "UNAUTHENTICATED");
+    if (process.env.NODE_ENV === "production" && device.isSimulated) {
+      throw new AppError(403, "Simulated devices are disabled in production.", "FORBIDDEN");
+    }
     if (!device.binId) throw new AppError(409, "The bin sensor is not associated with a bin.", "CONFLICT");
+    const isSimulated = Boolean(device.isSimulated);
     const values = {
       deviceId: device.id,
       binId: device.binId,
@@ -568,12 +595,12 @@ exports.ingestTelemetry = async (authenticatedDevice, data) => {
     );
     const inserted = await client.query(
       `INSERT INTO bin_sensor_readings
-        (device_id, bin_id, message_id, fill_level, battery_level, sensor_status, overflow_detected, measured_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        (device_id, bin_id, message_id, fill_level, battery_level, sensor_status, overflow_detected, measured_at, is_simulated)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (device_id, message_id) DO NOTHING
        RETURNING id, received_at AS "receivedAt"`,
       [values.deviceId, values.binId, values.messageId, values.fillLevel, values.batteryLevel,
-        values.sensorStatus, values.overflowDetected, values.measuredAt]
+        values.sensorStatus, values.overflowDetected, values.measuredAt, isSimulated]
     );
     let duplicate = false;
     let duplicateReceivedAt;
@@ -609,6 +636,7 @@ exports.ingestTelemetry = async (authenticatedDevice, data) => {
       messageId: data.messageId,
       receivedAt: inserted.rows[0]?.receivedAt || duplicateReceivedAt || null,
       duplicate,
+      isSimulated,
     };
   });
 };
@@ -632,7 +660,8 @@ exports.listBinAlerts = async (user, pagination) => {
   const offsetIndex = values.length;
   const result = await pool.query(
     `SELECT b.id AS "binId", b.bin_code AS "binCode", h.district,
-      alert.alert_type AS "alertType", d.last_communication_at AS "lastCommunicationAt",
+      alert.alert_type AS "alertType", d.is_simulated AS "isSimulated",
+      d.last_communication_at AS "lastCommunicationAt",
       reading.measured_at AS "measuredAt", reading.fill_level AS "fillLevel"
      FROM waste_bins b
      JOIN households h ON h.id = b.household_id

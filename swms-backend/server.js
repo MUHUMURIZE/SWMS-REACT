@@ -42,6 +42,9 @@ if (process.env.NODE_ENV === "production" && (!process.env.JWT_SECRET || process
 if (process.env.NODE_ENV === "production" && !(process.env.CORS_ORIGINS || "").trim()) {
   throw new Error("CORS_ORIGINS must contain at least one allowed origin in production.");
 }
+if (process.env.NODE_ENV === "production" && String(process.env.SWMS_ENABLE_SIMULATOR).toLowerCase() === "true") {
+  throw new Error("SWMS_ENABLE_SIMULATOR must not be enabled in production.");
+}
 
 const allowedOrigins = (process.env.CORS_ORIGINS || "")
   .split(",")
@@ -103,10 +106,21 @@ app.use("/api/collections/scheduling", schedulingRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/exports", exportRoutes);
 
+const port = Number(process.env.PORT || 3000);
+let activePort = port;
+let simulatorShutdown = null;
+if (process.env.NODE_ENV !== "production"
+  && String(process.env.SWMS_ENABLE_SIMULATOR).toLowerCase() === "true") {
+  const { createDevSimulatorRouter } = require("./simulators/devSimulatorRouter");
+  const simulatorMount = createDevSimulatorRouter({
+    getApiBaseUrl: () => `http://127.0.0.1:${activePort}`,
+  });
+  simulatorShutdown = simulatorMount.shutdown;
+  app.use("/api/dev-simulator", simulatorMount.router);
+}
+
 app.use(notFound);
 app.use(errorHandler);
-
-const port = Number(process.env.PORT || 3000);
 
 if (require.main === module) {
   connectLoginRateLimiter()
@@ -127,7 +141,8 @@ if (require.main === module) {
       }, 60 * 60 * 1000);
       agreementCleanup.unref();
       const server = app.listen(port, () => {
-        console.log(`SWMS API listening on port ${port}`);
+        activePort = server.address()?.port || port;
+        console.log(`SWMS API listening on port ${activePort}`);
       });
       let shuttingDown = false;
       const shutdown = (signal) => {
@@ -135,6 +150,7 @@ if (require.main === module) {
         shuttingDown = true;
         clearInterval(cleanup);
         clearInterval(agreementCleanup);
+        if (simulatorShutdown) simulatorShutdown();
         console.log(`Received ${signal}; stopping the SWMS API.`);
         const timeout = setTimeout(() => {
           console.error("Graceful shutdown timed out.");

@@ -4,6 +4,7 @@ const collectorModel = require("../models/collectorModel");
 const { createAccount } = require("./accountService");
 const districtAuthorizationService = require("./districtAuthorizationService");
 const AppError = require("../utils/AppError");
+const { validateGeoInput } = require("../utils/geo");
 
 function districtsMatch(left, right) {
   return typeof left === "string" && typeof right === "string"
@@ -115,11 +116,16 @@ exports.create = async (user, data) => {
     sector: data.sector,
     cell: data.cell,
     village: data.village,
+    latitude: data.latitude,
+    longitude: data.longitude,
+    locationAccuracy: data.locationAccuracy,
+    locationCapturedAt: data.locationCapturedAt,
   });
 };
 
 exports.update = async (user, householdId, data) => {
   const household = await findAccessibleHousehold(user, householdId);
+  const geo = validateGeoInput(data);
   if (user.role !== "ADMIN" && data.district !== undefined) {
     const collector = await collectorModel.findById(household.collectorId);
     if (!collector || !districtsMatch(data.district, collector.district)
@@ -130,7 +136,7 @@ exports.update = async (user, householdId, data) => {
       throw new AppError(403, "The household's district must remain authorized for its company and collector.", "FORBIDDEN");
     }
   }
-  return householdModel.update(householdId, data);
+  return householdModel.update(householdId, geo ? { ...data, ...geo } : data);
 };
 
 exports.remove = async (user, householdId) => {

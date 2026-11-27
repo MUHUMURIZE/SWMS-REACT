@@ -9,6 +9,12 @@ const location = {
   cell: text(false, 160),
   village: text(false, 160),
 };
+const geoLocation = {
+  latitude: { type: "decimal", min: -90, max: 90, scale: 7 },
+  longitude: { type: "decimal", min: -180, max: 180, scale: 7 },
+  locationAccuracy: { type: "decimal", min: 0, max: 999999, scale: 2 },
+  locationCapturedAt: { type: "datetime" },
+};
 
 exports.roles = roles;
 exports.statuses = statuses;
@@ -39,6 +45,7 @@ exports.householdSelf = {
   phone: text(false, 32),
   address: text(false),
   ...location,
+  ...geoLocation,
 };
 exports.company = {
   name: { type: "string", required: true, minLength: 1, maxLength: 160 },
@@ -93,6 +100,7 @@ exports.householdCreate = {
   address: { type: "string", required: true, minLength: 1, maxLength: 500 },
   nationalId: text(false, 64),
   ...location,
+  ...geoLocation,
 };
 exports.householdUpdate = {
   fullName: text(false, 160),
@@ -100,6 +108,7 @@ exports.householdUpdate = {
   address: text(false),
   nationalId: text(false, 64),
   ...location,
+  ...geoLocation,
 };
 exports.changePassword = {
   currentPassword: { type: "password", required: true },
@@ -124,10 +133,18 @@ exports.binCreate = {
   householdId: id(true),
   binCode: { type: "string", required: true, minLength: 1, maxLength: 64 },
   capacity: id(true),
+  ...geoLocation,
 };
 exports.binUpdate = {
   binCode: { type: "string", minLength: 1, maxLength: 64 },
   capacity: id(),
+  ...geoLocation,
+};
+exports.binLocation = {
+  latitude: { type: "decimal", required: true, min: -90, max: 90, scale: 7 },
+  longitude: { type: "decimal", required: true, min: -180, max: 180, scale: 7 },
+  locationAccuracy: { type: "decimal", min: 0, max: 999999, scale: 2 },
+  locationCapturedAt: { type: "datetime" },
 };
 exports.binProgress = {
   fillLevel: { type: "number", required: true, min: 0, max: 100 },
@@ -180,6 +197,7 @@ exports.vehicleMaintenanceStatus = {
 };
 exports.gpsDeviceCreate = {
   deviceCode: { type: "string", required: true, minLength: 1, maxLength: 128 },
+  isSimulated: { type: "boolean" },
 };
 exports.deviceAssociation = {
   resourceId: id(true),
@@ -195,6 +213,7 @@ exports.gpsLocation = {
 };
 exports.binDeviceCreate = {
   deviceCode: { type: "string", required: true, minLength: 1, maxLength: 128 },
+  isSimulated: { type: "boolean" },
 };
 exports.binTelemetry = {
   messageId: { type: "string", required: true, minLength: 1, maxLength: 128 },

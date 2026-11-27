@@ -3,7 +3,7 @@ const router = express.Router();
 const controller = require("../controllers/binController");
 const asyncHandler = require("../utils/asyncHandler");
 const { authenticateToken } = require("../middleware/authMiddleware");
-const { authorizeBinReader, authorizeBinManager } = require("../middleware/authorization");
+const { authorizeBinReader, authorizeBinManager, authorizeHouseholdManager } = require("../middleware/authorization");
 const { validateBody, validateId } = require("../middleware/validate");
 const schemas = require("../validation/schemas");
 const validatePagination = require("../middleware/pagination");
@@ -14,6 +14,7 @@ router.get("/full", authenticateToken, authorizeBinReader, validatePagination, a
 router.get("/:id", authenticateToken, authorizeBinReader, validateId, asyncHandler(controller.get));
 router.put("/:id", authenticateToken, authorizeBinManager, validateId, validateBody(schemas.binUpdate), asyncHandler(controller.update));
 router.delete("/:id", authenticateToken, authorizeBinManager, validateId, asyncHandler(controller.remove));
+router.put("/:id/location", authenticateToken, authorizeHouseholdManager, validateId, validateBody(schemas.binLocation), asyncHandler(controller.updateLocation));
 router.put("/:id/progress", authenticateToken, authorizeBinManager, validateId, validateBody(schemas.binProgress), asyncHandler(controller.updateProgress));
 router.put("/:id/empty", authenticateToken, authorizeBinManager, validateId, asyncHandler(controller.empty));
 

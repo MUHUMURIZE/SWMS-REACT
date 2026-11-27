@@ -7,11 +7,16 @@ const collectorModel = require("../models/collectorModel");
 const householdModel = require("../models/householdModel");
 const binModel = require("../models/binModel");
 const companyModel = require("../models/companyModel");
+const { validateGeoInput } = require("../utils/geo");
 
 async function createAccount({
   fullName, email, passwordHash, role, phone, companyId, representativeId,
   collectorId, address, nationalId, district, sector, cell, village,
+  latitude, longitude, locationAccuracy, locationCapturedAt,
 }) {
+  const geo = role === "HOUSEHOLD"
+    ? validateGeoInput({ latitude, longitude, locationAccuracy, locationCapturedAt })
+    : null;
   return runTransaction(async (connection) => {
     if (role === "COMPANY_REPRESENTATIVE" && !(await companyModel.findById(companyId, connection))) {
       throw new AppError(404, "Company not found.", "NOT_FOUND");
@@ -46,8 +51,12 @@ async function createAccount({
     } else if (role === "HOUSEHOLD") {
       resourceId = await householdModel.create(connection, userId, collectorId, address, nationalId, {
         district, sector, cell, village,
-      });
-      await binModel.createForHousehold(connection, resourceId);
+      }, geo);
+      if (geo) {
+        await binModel.createForHousehold(connection, resourceId, geo);
+      } else {
+        await binModel.createForHousehold(connection, resourceId);
+      }
     }
 
     return { resourceId, userId };
